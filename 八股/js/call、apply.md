@@ -8,6 +8,7 @@
 - 第一个参数 `thisArg`：函数执行时 `this` 要指向的对象。若传入 `null` 或 `undefined`，在非严格模式下 `this` 会指向全局对象（浏览器中为 `window`），严格模式下则为 `undefined`。
 - 后续参数：函数执行所需的参数，需**逐个传入**。
 
+> 补充：[this](this.md)
 ### 示例：改变 this 指向
 
 ```javascript
