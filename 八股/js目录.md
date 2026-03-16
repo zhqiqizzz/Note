@@ -1,6 +1,7 @@
 ## [Session+Cookie、JWT](js/Session+Cookie、JWT.md)
 ## [Promise](js/Promise.md)
 
+## [原型链](js/原型链.md)
 ## [防抖和节流](js/防抖和节流.md)
 
 ## [浏览器渲染机制](js/浏览器渲染机制.md)
