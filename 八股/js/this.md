@@ -9,11 +9,7 @@
 - **非严格模式**：`this` 指向全局对象（浏览器中为 `window`，Node.js 中为 `global`）。
 - **严格模式**（`'use strict'`）：`this` 为 `undefined`。
 
-javascript
-
-运行
-
-```
+```javascript
 // 非严格模式
 function globalFunc() {
   console.log(this);
@@ -32,11 +28,7 @@ strictFunc(); // 输出：undefined
 
 当函数作为某个对象的方法被调用时，`this` 指向**调用该方法的对象**。
 
-javascript
-
-运行
-
-```
+```javascript
 const person = {
   name: 'Alice',
   greet() {
@@ -48,11 +40,7 @@ person.greet(); // 输出：Hello, I'm Alice（this 指向 person）
 
 ⚠️ 易踩坑：如果将对象方法赋值给变量后单独调用，`this` 会变回全局对象（非严格模式）：
 
-javascript
-
-运行
-
-```
+```javascript
 const fn = person.greet;
 fn(); // 输出：Hello, I'm undefined（this 指向 window，window.name 为空）
 ```
@@ -61,11 +49,7 @@ fn(); // 输出：Hello, I'm undefined（this 指向 window，window.name 为空
 
 用 `new` 关键字调用构造函数时，`this` 指向**新创建的实例对象**。
 
-javascript
-
-运行
-
-```
+```javascript
 function Person(name) {
   this.name = name; // this 指向新实例
 }
@@ -81,11 +65,7 @@ console.log(alice.name); // 输出：Alice
 - `apply(thisArg, [argsArray])`：立即执行函数，`this` 指向 `thisArg`，参数以数组形式传入。
 - `bind(thisArg)`：返回一个新函数，`this` 永久绑定为 `thisArg`，不会再被其他方式改变。
 
-javascript
-
-运行
-
-```
+```javascript
 const person1 = { name: 'Alice' };
 const person2 = { name: 'Bob' };
 
@@ -104,11 +84,7 @@ boundGreet(); // 输出：Hello, I'm Alice（永久绑定 person1）
 
 箭头函数是 ES6 新增的语法，它**不绑定自己的 `this`**，而是**继承外层作用域（词法作用域）的 `this`**，且指向一旦确定就不会改变。
 
-javascript
-
-运行
-
-```
+```javascript
 const person = {
   name: 'Alice',
   greetLater() {
