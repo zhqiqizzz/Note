@@ -25,8 +25,13 @@
 
 ## [Pinia](vue/Pinia.md)
 
+## [Vue 框架的编译与渲染](vue/Vue%20框架的编译与渲染.md)
+
+## [Proxy](vue/Proxy.md)
+
 ## [Vue 修饰符](vue/Vue%20修饰符.md)
 
 ## [指令（v-）](vue/指令（v-）.md)
+
 ## [MVVM](vue/MVVM.md)
 
