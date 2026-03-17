@@ -29,3 +29,5 @@
 ## [Web Worker](js/Web%20Worker.md)
 
 ## [大文件上传](js/大文件上传.md)
+
+## [原始类型](js/原始类型.md)
