@@ -18,6 +18,7 @@
 ### [Vue Hooks](vue/常用/Vue%20Hooks.md)
 ### [ES6+](vue/常用/ES6+.md)
 ### [Slot插槽](vue/常用/Slot插槽.md)
+### [v-bind](vue/常用/v-bind.md)
 ## [生命周期](vue/生命周期.md)
 
 ## [自定义指令](vue/自定义指令.md)
