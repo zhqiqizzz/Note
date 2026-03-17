@@ -12,7 +12,7 @@
 ### [组件缓存](vue/组件/组件缓存.md)
 ### [父子组件通信](vue/组件/父子组件通信.md)
 ### [跨层通信](vue/组件/跨层通信.md)
-
+### [组件优化](vue/组件/组件优化.md)
 ## [生命周期](vue/生命周期.md)
 
 ## [Pinia](vue/Pinia.md)
@@ -20,4 +20,5 @@
 ## [Vue 修饰符](vue/Vue%20修饰符.md)
 
 ## [指令（v-）](vue/指令（v-）.md)
-# [MVVM](vue/MVVM.md)
+## [MVVM](vue/MVVM.md)
+
