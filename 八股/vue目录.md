@@ -13,7 +13,14 @@
 ### [父子组件通信](vue/组件/父子组件通信.md)
 ### [跨层通信](vue/组件/跨层通信.md)
 ### [组件优化](vue/组件/组件优化.md)
+
+## 常用
+### [Vue Hooks](vue/常用/Vue%20Hooks.md)
+### [ES6+](vue/常用/ES6+.md)
+### [Slot插槽](vue/常用/Slot插槽.md)
 ## [生命周期](vue/生命周期.md)
+
+## [自定义指令](vue/自定义指令.md)
 
 ## [Pinia](vue/Pinia.md)
 

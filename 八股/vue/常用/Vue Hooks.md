@@ -229,9 +229,7 @@ export function useFetch(url) {
 
 #### 2. 在组件中使用：
 
-vue
-
-```
+```vue
 <script setup>
 import { useFetch } from './composables/useFetch'
 
@@ -264,11 +262,7 @@ const { data, loading, error, execute } = useFetch('https://api.example.com/user
 
 #### 1. 创建 Composable：`composables/useDebounce.js`
 
-javascript
-
-运行
-
-```
+```javascript
 import { ref, watch } from 'vue'
 
 export function useDebounce(value, delay = 500) {
@@ -291,9 +285,7 @@ export function useDebounce(value, delay = 500) {
 
 #### 2. 在组件中使用：
 
-vue
-
-```
+```vue
 <script setup>
 import { ref, watch } from 'vue'
 import { useDebounce } from './composables/useDebounce'
