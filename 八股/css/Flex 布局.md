@@ -34,9 +34,7 @@ Flex 布局基于**主轴（Main Axis）**和**交叉轴（Cross Axis）**：
 
 **示例**：
 
-css
-
-```
+```css
 .container {
   display: flex;
   flex-direction: row; /* 项目从左到右排列 */
@@ -47,19 +45,14 @@ css
 
 定义当项目在主轴上排不下时，是否换行。
 
-表格
-
 |属性值|说明|
 |---|---|
 |`nowrap`（默认）|不换行，项目会被压缩（即使设置了宽度）。|
 |`wrap`|换行，第一行在上方。|
 |`wrap-reverse`|换行，第一行在下方。|
-
 **示例**：
 
-css
-
-```
+```css
 .container {
   display: flex;
   flex-wrap: wrap; /* 排不下时换行 */
@@ -72,9 +65,7 @@ css
 
 **示例**：
 
-css
-
-```
+```css
 .container {
   display: flex;
   flex-flow: row wrap; /* 水平排列 + 换行 */
@@ -85,22 +76,17 @@ css
 
 定义项目在主轴上的空间分配和对齐。
 
-表格
-
-|属性值|说明|
-|---|---|
-|`flex-start`（默认）|项目向主轴起点对齐。|
-|`flex-end`|项目向主轴终点对齐。|
-|`center`|项目在主轴上居中对齐。|
-|`space-between`|项目两端对齐，项目之间的间距相等（两端无间距）。|
-|`space-around`|每个项目两侧的间距相等（项目之间的间距是两端的 2 倍）。|
-|`space-evenly`|项目之间和两端的间距都相等。|
-
+| 属性值              | 说明                            |
+| ---------------- | ----------------------------- |
+| `flex-start`（默认） | 项目向主轴起点对齐。                    |
+| `flex-end`       | 项目向主轴终点对齐。                    |
+| `center`         | 项目在主轴上居中对齐。                   |
+| `space-between`  | 项目两端对齐，项目之间的间距相等（两端无间距）。      |
+| `space-around`   | 每个项目两侧的间距相等（项目之间的间距是两端的 2 倍）。 |
+| `space-evenly`   | 项目之间和两端的间距都相等。                |
 **示例**：
 
-css
-
-```
+```css
 .container {
   display: flex;
   justify-content: space-between; /* 两端对齐，项目间距相等 */
@@ -111,8 +97,6 @@ css
 
 定义项目在交叉轴上的对齐（适用于**单行项目**）。
 
-表格
-
 |属性值|说明|
 |---|---|
 |`stretch`（默认）|若项目未设置高度（或高度为 `auto`），则拉伸至容器高度。|
@@ -120,12 +104,9 @@ css
 |`flex-end`|项目向交叉轴终点对齐。|
 |`center`|项目在交叉轴上居中对齐（常用：垂直居中）。|
 |`baseline`|项目的第一行文字基线对齐。|
-
 **示例**：
 
-css
-
-```
+```css
 .container {
   display: flex;
   align-items: center; /* 项目垂直居中 */
@@ -136,8 +117,6 @@ css
 
 定义**多行项目**（即 `flex-wrap: wrap` 时）在交叉轴上的对齐（单行项目无效）。
 
-表格
-
 |属性值|说明|
 |---|---|
 |`stretch`（默认）|轴线拉伸占满交叉轴剩余空间。|
@@ -147,12 +126,9 @@ css
 |`space-between`|轴线两端对齐，轴线之间间距相等。|
 |`space-around`|每个轴线两侧间距相等。|
 |`space-evenly`|轴线之间和两端间距都相等。|
-
 **示例**：
 
-css
-
-```
+```css
 .container {
   display: flex;
   flex-wrap: wrap;
@@ -168,9 +144,7 @@ css
 
 **示例**：
 
-css
-
-```
+```css
 .item1 { order: 2; } /* 排第 3（假设其他项目 order 为 0、1） */
 .item2 { order: -1; } /* 排第 1 */
 .item3 { order: 0; } /* 排第 2 */
@@ -185,9 +159,7 @@ css
 
 **示例**：
 
-css
-
-```
+```css
 .item { flex-grow: 1; } /* 所有项目平分剩余空间 */
 ```
 
@@ -200,9 +172,7 @@ css
 
 **示例**：
 
-css
-
-```
+```css
 .item1 { flex-shrink: 0; } /* 空间不足时不缩小 */
 .item2 { flex-shrink: 1; } /* 空间不足时缩小 */
 ```
@@ -213,9 +183,7 @@ css
 
 **示例**：
 
-css
-
-```
+```css
 .item { flex-basis: 200px; } /* 项目在主轴上的初始大小为 200px */
 ```
 
@@ -231,9 +199,7 @@ css
 
 **示例**：
 
-css
-
-```
+```css
 .item { flex: 1; } /* 项目平分容器空间 */
 ```
 
@@ -245,9 +211,7 @@ css
 
 **示例**：
 
-css
-
-```
+```css
 .container {
   display: flex;
   align-items: flex-start; /* 所有项目默认向交叉轴起点对齐 */
@@ -261,19 +225,13 @@ css
 
 ### 1. 垂直居中（最常用）
 
-html
-
-预览
-
-```
+```html
 <div class="container">
   <div class="item">垂直居中</div>
 </div>
 ```
 
-css
-
-```
+```css
 .container {
   display: flex;
   justify-content: center; /* 水平居中 */
@@ -285,20 +243,14 @@ css
 
 ### 2. 两栏布局（左侧固定，右侧自适应）
 
-html
-
-预览
-
-```
+```html
 <div class="container">
   <div class="left">左侧固定（200px）</div>
   <div class="right">右侧自适应</div>
 </div>
 ```
 
-css
-
-```
+```css
 .container { display: flex; }
 .left { width: 200px; background: #f0f0f0; }
 .right { flex: 1; background: #e0e0e0; } /* flex: 1 占满剩余空间 */
@@ -306,11 +258,7 @@ css
 
 ### 3. 等分布局（3 列等分）
 
-html
-
-预览
-
-```
+```html
 <div class="container">
   <div class="item">1</div>
   <div class="item">2</div>
@@ -318,20 +266,14 @@ html
 </div>
 ```
 
-css
-
-```
+```css
 .container { display: flex; }
 .item { flex: 1; border: 1px solid #eee; text-align: center; }
 ```
 
 ### 4. 导航栏（两端对齐，中间间距相等）
 
-html
-
-预览
-
-```
+```html
 <div class="nav">
   <a href="#">首页</a>
   <a href="#">产品</a>
@@ -340,9 +282,7 @@ html
 </div>
 ```
 
-css
-
-```
+```css
 .nav {
   display: flex;
   justify-content: space-around; /* 项目两侧间距相等 */
