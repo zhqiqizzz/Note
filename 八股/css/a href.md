@@ -72,11 +72,7 @@
 
 移动端点击后自动打开拨号界面，并预填电话号码：
 
-html
-
-预览
-
-```
+```html
 <a href="tel:13800138000">拨打客服电话</a>
 ```
 
@@ -84,11 +80,7 @@ html
 
 如果 `href` 指向的是浏览器无法直接打开的文件（如 `.zip`、`.pdf`、`.exe`），浏览器会自动下载该文件：
 
-html
-
-预览
-
-```
+```html
 <!-- 下载 PDF 文件 -->
 <a href="/files/manual.pdf">下载使用手册</a>
 
@@ -98,11 +90,7 @@ html
 
 _提示：也可以配合 `download` 属性强制下载，即使文件能被浏览器打开（如图片）：_
 
-html
-
-预览
-
-```
+```html
 <!-- 强制下载图片，而不是在浏览器中打开 -->
 <a href="/images/logo.png" download="logo.png">下载 Logo</a>
 ```
@@ -113,11 +101,7 @@ html
 
 点击后跳转到页面顶部，但会**改变 URL 哈希**，且会触发页面滚动：
 
-html
-
-预览
-
-```
+```html
 <a href="#">回到顶部（不推荐，会改变 URL）</a>
 ```
 
@@ -125,11 +109,7 @@ html
 
 点击后无任何操作，不会改变 URL 也不会滚动，但**不推荐**（不符合语义化，且可能有安全风险）：
 
-html
-
-预览
-
-```
+```html
 <a href="javascript:void(0)">无操作链接（不推荐）</a>
 ```
 
@@ -137,29 +117,19 @@ html
 
 如果只是需要一个可点击的元素但不需要跳转，**用 `<button>` 标签**（更符合语义化）：
 
-html
-
-预览
-
-```
+```html
 <button @click="handleClick">点击执行操作</button>
 ```
 
 如果必须用 `<a>`，可以通过 JS 阻止默认行为（Vue 中用 `@click.prevent`）：
 
-html
-
-预览
-
-```
+```html
 <a href="#" @click.prevent="handleClick">点击执行操作</a>
 ```
 
 ## 三、配合 `href` 常用的属性
 
 ### 1. `target`：控制链接的打开方式
-
-表格
 
 |属性值|说明|
 |---|---|
@@ -170,11 +140,7 @@ html
 
 **示例**：
 
-html
-
-预览
-
-```
+```html
 <!-- 在新标签页打开 Vue 官网 -->
 <a href="https://vuejs.org" target="_blank">Vue 官方文档（新标签页）</a>
 ```
@@ -183,11 +149,7 @@ html
 
 当使用 `target="_blank"` 时，新打开的页面可以通过 `window.opener` 访问原页面的 `window` 对象，存在安全风险。需添加 `rel="noopener noreferrer"` 禁止这种访问：
 
-html
-
-预览
-
-```
+```html
 <!-- 安全的新标签页打开方式 -->
 <a href="https://vuejs.org" target="_blank" rel="noopener noreferrer">
   Vue 官方文档（新标签页）
@@ -198,8 +160,6 @@ html
 
 除了上面的 `noopener noreferrer`，还有几个常用值：
 
-表格
-
 |属性值|说明|
 |---|---|
 |`nofollow`|告诉搜索引擎不要追踪该链接（不传递权重），用于广告、第三方链接等。|
@@ -207,11 +167,7 @@ html
 
 **示例**：
 
-html
-
-预览
-
-```
+```html
 <a href="https://example.com" rel="nofollow external">第三方链接</a>
 ```
 
