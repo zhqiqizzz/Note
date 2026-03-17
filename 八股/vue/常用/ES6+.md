@@ -391,11 +391,7 @@ console.log(str);
 ### 2. `Set` / `Map`
 
 - **`Set`**：无重复值的集合。
-    
-    
-    
-    运行
-    
+
 ```javascript
     const set = new Set([1, 2, 2, 3]);
     console.log(set); // Set {1, 2, 3}
@@ -403,30 +399,20 @@ console.log(str);
     set.has(2); // true（判断是否包含）
     set.delete(3); // 删除元素
 ```
-    
+
 - **`Map`**：键值对集合，键可以是任意类型（Object 的键只能是字符串 / Symbol）。
-    
-    javascript
-    
-    运行
-    
-    ```
+
+```javascript
     const map = new Map();
     map.set('name', '张三'); // 添加键值对
     map.get('name'); // '张三'（获取值）
     map.has('name'); // true
-    ```
-    
-
+```
 ### 3. `Class`（类）
 
 语法糖，让面向对象编程更清晰。
 
-javascript
-
-运行
-
-```
+```javascript
 class Person {
   constructor(name, age) {
     this.name = name;
@@ -454,11 +440,7 @@ student.sayHi(); // 你好，我是李四
 
 遍历可迭代对象（数组、`Set`、`Map` 等），可 `break`/`continue`。
 
-javascript
-
-运行
-
-```
+```javascript
 const arr = [1, 2, 3];
 for (const item of arr) {
   console.log(item); // 1, 2, 3
