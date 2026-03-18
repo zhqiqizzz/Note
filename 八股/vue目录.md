@@ -26,9 +26,14 @@
 
 ## [Pinia](vue/Pinia.md)
 
-## [Vue 框架的编译与渲染](vue/Vue%20框架的编译与渲染.md)
 
-## [Proxy](vue/Proxy.md)
+
+## Vue框架的编译与渲染
+### [Proxy](vue/页面渲染/Proxy.md)
+### [虚拟 DOM](vue/页面渲染/虚拟%20DOM.md)
+### [双向数据绑定原理](vue/页面渲染/双向数据绑定原理.md)
+### [Vue 框架的编译与渲染](vue/页面渲染/Vue%20框架的编译与渲染.md)
+
 
 ## [Vue 修饰符](vue/Vue%20修饰符.md)
 
