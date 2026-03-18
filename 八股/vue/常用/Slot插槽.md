@@ -45,7 +45,7 @@ import MyButton from './MyButton.vue'
 
 ### 2. 具名插槽（Named Slot）
 
-当子组件需要 ** 多个 “开口”** 时，给 `<slot>` 加 `name` 属性区分，父组件用 `v-slot:name`（或简写 `#name`）指定内容插入的位置。
+当子组件需要 **多个 “开口”** 时，给 `<slot>` 加 `name` 属性区分，父组件用 `v-slot:name`（或简写 `#name`）指定内容插入的位置。
 #### 子组件（定义多个具名插槽）：
 
 ```vue
