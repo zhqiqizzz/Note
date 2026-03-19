@@ -18,8 +18,6 @@ CSS **定位（Position）** 是控制元素在页面中位置的核心属性，
 - **特点**：元素按正常文档流排列，`top`/`right`/`bottom`/`left`/`z-index` 均无效。
 - **用法**：无需额外设置，所有元素默认都是 `static`。
     
-    
-    
 ```css
     .box {
       position: static; /* 默认值，可省略 */
@@ -34,7 +32,7 @@ CSS **定位（Position）** 是控制元素在页面中位置的核心属性，
     
 - **用法示例**：
 	
-```
+```css
     .box {
       position: relative;
       top: 20px;    /* 相对于原位置向下移动 20px */
