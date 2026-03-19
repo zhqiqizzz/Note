@@ -24,7 +24,7 @@
 6. 真实 DOM 更新：把变化应用到页面
 ```
 
-> 补充：render函数即是一个vue内置的副作用函数（effect），通过render函数构建出[虚拟 DOM](虚拟%20DOM.md)
+> 补充： 首次执行 `renderEffect` 时，会调用 `component.render()`，构建出 [虚拟 DOM](虚拟%20DOM.md) 
 ## 二、详细拆解每个环节
 
 ### 1. 模板（Template）：用户友好的声明式语法
