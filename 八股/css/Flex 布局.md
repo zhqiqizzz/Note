@@ -9,7 +9,7 @@ Flex 布局由 **Flex 容器（Flex Container）** 和 **Flex 项目（Flex Item
 
 ### 关键：主轴与交叉轴
 
-Flex 布局基于**主轴（Main Axis）**和**交叉轴（Cross Axis）**：
+Flex 布局基于**主轴（Main Axis）** 和 **交叉轴（Cross Axis）**：
 
 - **主轴**：项目排列的主要方向（由 `flex-direction` 决定），有起点（main start）和终点（main end）。
 - **交叉轴**：垂直于主轴的方向，有起点（cross start）和终点（cross end）。
