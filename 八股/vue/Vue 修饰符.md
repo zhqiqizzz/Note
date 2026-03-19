@@ -22,11 +22,11 @@ Vue 修饰符是以 **`.`** 开头的特殊后缀，用于**简化常见的 DOM 
 
 用于增强表单元素的双向绑定行为，直接加在 `v-model` 后面。
 
-|修饰符|作用|示例|
-|---|---|---|
-|`.lazy`|改为在 `change` 事件（而非 `input` 事件）时更新数据（输入时不更新，失焦 / 回车才更新）。|`<input v-model.lazy="message" placeholder="失焦后更新">`|
-|`.number`|自动将输入值转换为**数字类型**（否则输入框默认返回字符串）。|`<input v-model.number="age" type="number" placeholder="输入年龄">`|
-|`.trim`|自动去除输入值的**首尾空格**。|`<input v-model.trim="username" placeholder="自动去空格">`|
+| 修饰符       | 作用                                                      | 示例                                                              |
+| --------- | ------------------------------------------------------- | --------------------------------------------------------------- |
+| `.lazy`   | 改为在 `change` 事件（而非 `input` 事件）时更新数据（输入时不更新，失焦 / 回车才更新）。 | `<input v-model.lazy="message" placeholder="失焦后更新">`            |
+| `.number` | 自动将输入值转换为**数字类型**（否则输入框默认返回字符串）。                        | `<input v-model.number="age" type="number" placeholder="输入年龄">` |
+| `.trim`   | 自动去除输入值的**首尾空格**。                                       | `<input v-model.trim="username" placeholder="自动去空格">`           |
 
 ### 三、按键修饰符（Key Modifiers）
 
