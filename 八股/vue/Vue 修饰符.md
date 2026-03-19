@@ -3,14 +3,14 @@ Vue 修饰符是以 **`.`** 开头的特殊后缀，用于**简化常见的 DOM 
 
 用于处理 DOM 事件的常见行为（如阻止冒泡、阻止默认行为等），直接加在 `v-on`（或 `@`）事件后面。
 
-|修饰符|作用|示例|
-|---|---|---|
-|`.stop`|阻止事件冒泡（事件不再向上层元素传播）。|`<button @click.stop="handleClick">点击</button>`|
-|`.prevent`|阻止元素的默认行为（如表单提交、链接跳转）。|`<form @submit.prevent="handleSubmit">提交</form>`|
-|`.capture`|启用事件捕获模式（事件从外层元素向内层元素触发）。|`<div @click.capture="handleDivClick">外层</div>`|
-|`.self`|仅当事件在**元素自身**触发时才执行（不包括子元素冒泡上来的事件）。|`<div @click.self="handleDivClick">外层 <button>内层</button></div>`|
-|`.once`|事件只触发一次（触发后自动移除监听器）。|`<button @click.once="handleOnce">只触发一次</button>`|
-|`.passive`|告诉浏览器事件监听器不会调用 `preventDefault`（提升滚动性能，移动端常用）。|`<div @scroll.passive="handleScroll">滚动区域</div>`|
+| 修饰符        | 作用                                             | 示例                                                               |
+| ---------- | ---------------------------------------------- | ---------------------------------------------------------------- |
+| `.stop`    | 阻止事件冒泡（事件不再向上层元素传播）。                           | `<button @click.stop="handleClick">点击</button>`                  |
+| `.prevent` | 阻止元素的默认行为（如表单提交、链接跳转）。                         | `<form @submit.prevent="handleSubmit">提交</form>`                 |
+| `.capture` | 启用事件捕获模式（事件从外层元素向内层元素触发）。                      | `<div @click.capture="handleDivClick">外层</div>`                  |
+| `.self`    | 仅当事件在**元素自身**触发时才执行（不包括子元素冒泡上来的事件）。            | `<div @click.self="handleDivClick">外层 <button>内层</button></div>` |
+| `.once`    | 事件只触发一次（触发后自动移除监听器）。                           | `<button @click.once="handleOnce">只触发一次</button>`                |
+| `.passive` | 告诉浏览器事件监听器不会调用 `preventDefault`（提升滚动性能，移动端常用）。 | `<div @scroll.passive="handleScroll">滚动区域</div>`                 |
 **示例组合使用**：
 
 ```vue

@@ -75,6 +75,8 @@ MVVM 将应用分为三层，各司其职：
 
 MVVM 的灵魂是**双向数据绑定**（Two-way Data Binding）：
 
+> 那就又来到了 [双向数据绑定原理](页面渲染/双向数据绑定原理.md) 
+
 - **View → ViewModel**：View 的输入变化（如表单输入）自动更新 ViewModel 的数据。
 - **ViewModel → View**：ViewModel 的数据变化自动更新 View 的 UI。
 
