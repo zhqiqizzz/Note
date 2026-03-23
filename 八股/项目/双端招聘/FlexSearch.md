@@ -196,77 +196,6 @@ onMounted(() => {
     </div>
   </div>
 </template>
-
-<style scoped>
-.search-container {
-  max-width: 600px;
-  margin: 2rem auto;
-  font-family: sans-serif;
-}
-
-.search-box {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 1rem;
-  align-items: center;
-}
-
-.search-input {
-  flex: 1;
-  padding: 10px 15px;
-  font-size: 16px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.search-input:focus {
-  border-color: #42b983;
-}
-
-.result-count {
-  font-size: 14px;
-  color: #666;
-  white-space: nowrap;
-}
-
-.result-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.result-item {
-  padding: 15px;
-  border: 1px solid #eee;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.result-item h3 {
-  margin: 0 0 5px 0;
-  font-size: 16px;
-  color: #333;
-}
-
-.result-item p {
-  margin: 0 0 5px 0;
-  font-size: 14px;
-  color: #666;
-}
-
-.result-item small {
-  color: #999;
-}
-
-.empty-state {
-  text-align: center;
-  color: #999;
-  padding: 2rem;
-}
-</style>
 ```
 ### 4. 使用示例 (`App.vue`)
 
@@ -320,7 +249,138 @@ FlexSearch 本身是一个文本搜索引擎，它不懂中文拼音。
 - 默认情况下，搜索引擎可能需要完整的单词匹配。
 - `forward` 模式会将文本切分为前缀片段（例如 "zhangsan" 会被索引为 "z", "zh", "zha", ..., "zhangsan"）。
 - 这使得用户输入不完整拼音（如 "zhang" 甚至 "zh") 也能立刻命中结果。
+##### 1. 索引表示意
 
+假设原始数据只有 **3 个职位**。  
+在代码运行 `initIndex()` 之后，FlexSearch 内存中生成的映射表（索引）大概长这样。
+
+1. **【仓库表】**：存原始数据（书）。
+2. **【目录表】**：存搜索关键词到 ID 的映射（索引的核心）。
+
+###### 1. 原始数据（仓库表）
+
+这是你代码里的 `rawJobs`，存在内存里，ID 是主键。
+
+|ID (主键)|职位名称 (title)|公司 (company)|...其他字段|
+|---|---|---|---|
+|**101**|Java 工程师|阿里|...|
+|**102**|会计专员|腾讯|...|
+|**103**|前端开发|字节|...|
+###### 2. 预处理后的“纸条” (中间过程)
+
+在建立索引前，代码 `generateSearchText` 会把每个职位变成一长串字符。
+
+|ID|原始标题|**生成的 `_searchText` (索引用的长字符串)**|
+|---|---|---|
+|**101**|Java 工程师|`java 工程师 ali java gong cheng shi jgcs`|
+|**102**|会计专员|`会计专员 tencent kuai ji zhuan yuan kjzy`|
+|**103**|前端开发|`前端开发 bytedance qian duan kai fa qdkf`|
+_(注：为了演示，我省略了部分拼音，只保留关键部分)_
+
+###### 3. 最终生成的【目录映射表】
+
+这就是 FlexSearch 内部真正存的东西。它是一个巨大的 **Key-Value** 列表。  
+**Key (关键词)** 指向 **Value (包含该词的 ID 列表)**。
+
+由于配置了 `tokenize: 'forward'`，系统会把上面的长字符串切碎，**所有的前缀**都会成为 Key。
+
+```javascript
+// 假设输入单词是 "java"
+if (tokenizeMode === 'forward') {
+  // 它会生成所有前缀
+  return ['j', 'ja', 'jav', 'java'];
+} else if (tokenizeMode === 'strict') {
+  // 严格模式，只返回完整单词
+  return ['java'];
+} else if (tokenizeMode === 'reverse') {
+  // 反向模式，用于后缀搜索 (如搜 "va" 能匹配 "java")
+  return ['a', 'va', 'ava', 'java'];
+}
+```
+
+**所以：**
+
+- 你只需要把 `"java gong cheng shi"` 这一长串扔给 FlexSearch。
+- FlexSearch 会先按空格切分成 `["java", "gong", "cheng", "shi"]`。
+- 然后对**每一个**单词应用 `forward` 规则：
+    - `java` -> `j`, `ja`, `jav`, `java`
+    - `gong` -> `g`, `go`, `gon`, `gong`
+    - ...
+- 最终所有这些碎片都会进入索引表。
+
+**结论**：你不需要手动生成 `jav`, `ja`，库帮你做了。这也是为什么它这么快且方便的原因。
+
+**本质上就是巨大的 `Map` (或 JavaScript Object)，存储在浏览器的内存 (RAM) 中。**
+
+##### 2. 具体存储结构
+
+FlexSearch 是一个纯前端库（Pure JS），它不依赖后端数据库，也不存在硬盘文件里（除非你自己序列化保存）。当你调用 `new Document()` 时，它就在 **JavaScript 堆内存 (Heap)** 中创建了数据结构。
+
+虽然 FlexSearch 为了极致性能，内部使用了更复杂的编码（如倒排列表的压缩存储、Int32 数组等），但逻辑上你可以把它理解为这样一个巨大的 `Map`：
+
+```javascript
+// 逻辑上的存储结构 (简化版)
+const indexMap = new Map();
+
+// Key 是词条 (string), Value 是文档 ID 列表 (array of numbers)
+indexMap.set('java', [101]);
+indexMap.set('jav', [101]);
+indexMap.set('ja', [101]);
+indexMap.set('j', [101, 103]); // 假设 103 前端开发也有 'j' (比如 jsp? 或者仅仅是巧合)
+indexMap.set('kuai', [102]);
+indexMap.set('kua', [102]);
+// ... 可能有几十万个这样的键值对
+```
+
+###### 为什么不用数据库？
+
+- **速度**：内存中的 `Map` 查找时间复杂度接近 O(1)O(1) （常数时间）。无论你有 1 万条还是 10 万条数据，查一下都是微秒级的。
+- **场景**：招聘网站的职位列表通常也就几千到几万条，完全放得进浏览器内存（几 MB 到几十 MB），不会导致页面卡顿。
+
+###### 数据存在哪？会丢失吗？
+
+- **位置**：存在于当前网页标签页的 **运行内存 (RAM)** 中。
+- **生命周期**：
+    - 只要你不刷新页面，索引一直在。
+    - **一旦刷新页面 (F5) 或关闭标签页**，内存释放，索引**消失**。
+- **恢复**：所以你需要在 `onMounted` (Vue) 或 `useEffect` (React) 中重新运行 `initIndex()`，重新从原始数据构建索引。这个过程通常很快（几万条数据只需几百毫秒）。
+
+| 🔑 关键词 (Key)  <br>_(用户输入的这个就能搜到)_ | 📝 命中的职位 ID 列表  <br>_(系统直接返回这些 ID)_ | 💡 为什么能命中？(来源解析)                    |
+| --------------------------------- | ----------------------------------- | ----------------------------------- |
+| **`java`**                        | `[101]`                             | 来自 ID 101 的 `java`                  |
+| **`jav`**                         | `[101]`                             | 来自 ID 101 的 `java` 的前缀 (forward 模式) |
+| **`ja`**                          | `[101]`                             | 来自 ID 101 的 `java` 的前缀              |
+|                                   |                                     |                                     |
+| **`kuai`**                        | `[102]`                             | **🎯 来自 ID 102 的 `kuai ji`**        |
+| **`kua`**                         | `[102]`                             | **🎯 来自 ID 102 的 `kuai` 的前缀**       |
+| **`ji`**                          | `[102]`                             | **🎯 来自 ID 102 的 `kuai ji`**        |
+| **`zhuan`**                       | `[102]`                             | 来自 ID 102 的 `zhuan yuan`            |
+| **`kjzy`**                        | `[102]`                             | 来自 ID 102 的首字母 `kjzy`               |
+##### 3. 搜索过程演示
+
+现在，当你在输入框输入时，系统**不再遍历**那 3 个职位，而是直接查上面的表：
+
+###### 场景 A：用户输入 `"kuai"`
+
+1. 系统去【目录表】找 Key = `"kuai"`。
+2. **发现记录！** -> 对应 ID 列表 `[102]`。
+3. 系统去【仓库表】拿出 ID 为 `102` 的数据。
+4. **结果**：显示“会计专员”。
+
+- _耗时：0.0001 秒 (直接查字典)_
+
+###### 场景 B：用户输入 `"jg"` (想搜 Java)
+
+1. 系统去【目录表】找 Key = `"jg"`。
+2. **发现记录！** (因为 `java gong...` 被切分，且 `jgcs` 首字母也被录入，或者 `gong` 的前缀？这里修正一下：如果是 `jgcs`，搜 `jg` 会命中，因为 `forward` 模式把 `jgcs` 拆成了 `j`, `jg`, `jgc`, `jgcs`)。
+3. 对应 ID 列表 `[101]`。
+4. **结果**：显示“Java 工程师”。
+
+###### 场景 C：用户输入 `"hr"` (想搜人力资源，但数据里没有)
+
+1. 系统去【目录表】找 Key = `"hr"`。
+2. **没找到记录**。
+3. **结果**：返回空数组 `[]`。
 #### C. 性能优化
 
 - **FlexSearch** 是内存级索引，速度极快（微秒级），即使有上万条数据，搜索也是瞬间完成。
