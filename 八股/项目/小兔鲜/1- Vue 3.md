@@ -76,7 +76,7 @@
     > 另外，因为 `<script setup>` 提供了更明确的上下文，Vue 的编译器能够更容易地进行静态分析，执行比如‘静态节点提升’和‘补丁标记 (PatchFlag)’等优化机制，这让 Vue 3 的运行时 Diff 算法速度远超 Vue 2。”
     
 
-### 5. Vue 3 的组件通信机制（`script setup` 专属考点）
+### 5. Vue 3 的组件通信机制
 
 在电商项目中，父子组件嵌套非常深（比如 `Home` -> `HomePanel` -> `GoodsItem`）。
 
