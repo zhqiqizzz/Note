@@ -47,27 +47,140 @@
 
 ### 2. 前端状态结构
 
-```js
-// 当前用户选中的规格
-const selectedSpecs = {
-  "颜色": null,
-  "存储容量": null
-};
+前端处理的核心逻辑是：**对于每一个未选中的规格项，假设用户选了它，看看能不能和“当前已选的其他规格”以及“任意未选规格”组成一个有效的 SKU。**
 
-// 每个规格值是否可用（用于控制禁用态）
-const specValueStatus = {
-  "颜色": {
-    "黑色": true,
-    "白色": true,
-    "蓝色": false // 假设所有含“蓝色”的SKU都无货
-  },
-  "存储容量": {
-    "128GB": true,
-    "256GB": false,
-    "512GB": true
+#### 核心判断逻辑
+
+假设用户当前状态：
+
+- 已选：`颜色=红`
+- 未选：`尺寸`、`材质`
+
+现在要判断 **“尺寸=M”** 这个按钮是否可用（高亮）：
+
+**步骤：**
+
+1. **锁定已选**：必须包含 `颜色=红`。
+2. **假设选中**：临时加上 `尺寸=M`。
+3. **遍历补全**：去检查现有的有效 SKU 列表中，**是否存在**至少一个 SKU，同时满足：
+    - 包含 `颜色=红`
+    - 包含 `尺寸=M`
+    - （材质的任意值都可以，因为材质还没选，只要有一种材质能配成就行）
+4. **结论**：
+    - 如果找到了（比如 `{红, M, 麻}` 是有效 SKU），则 **“尺寸=M”按钮可用**。
+    - 如果遍历完所有有效 SKU 都没找到这样的组合，则 **“尺寸=M”按钮禁用（置灰）**。
+
+#### 算法复杂度优化
+
+如果每次点击都遍历所有 SKU，当 SKU 数量达到几千时，前端会卡顿。  
+**优化方案：建立索引映射表（空间换时间）**
+
+在页面初始化时，预处理数据，建立一个 **“部分路径 -> 是否存在”** 的哈希表（Map）。
+
+**预处理逻辑：**  
+遍历所有有效 SKU，对每个 SKU 生成其所有的**子集组合（Partial Paths）**，存入 Map。
+
+例如对于 SKU `{红, S, 棉}`：
+
+- 生成一级组合：`{红}`, `{S}`, `{棉}`
+- 生成二级组合：`{红, S}`, `{红, 棉}`, `{S, 棉}`
+- 生成三级组合：`{红, S, 棉}`
+
+#### 三、前端具体实现步骤（以 Vue/React 为例）
+
+##### 第一步：数据初始化与预处理
+
+```javascript
+// 原始数据
+const skus = [
+  { specs: ['1_红', '2_S', '3_棉'], stock: 10 },
+  { specs: ['1_红', '2_M', '3_麻'], stock: 5 }
+];
+
+// 1. 构建路径映射表 (Path Map)
+const pathMap = new Set();
+
+skus.forEach(sku => {
+  if (sku.stock <= 0) return; // 只处理有货的
+  
+  const specs = sku.specs;
+  // 生成该 SKU 的所有子集组合 (幂集的非空子集，但不需要全生成，只需生成到当前层级)
+  // 优化技巧：实际上只需要生成所有两两组合、三三组合等，或者更简单的：
+  // 对于每个规格值，记录它与其它已选值的组合路径
+  
+  // 这里使用一种简化的通用生成法：生成当前 SKU 所有可能的排列组合键
+  // 比如：["1_红"], ["2_S"], ["1_红", "2_S"] ...
+  // 为了性能，通常只生成“排序后”的字符串作为 Key，避免顺序问题
+  const sortedSpecs = [...specs].sort(); 
+  
+  // 递归生成所有子集 (实际工程中可用位运算优化)
+  generateSubsets(sortedSpecs).forEach(subset => {
+    pathMap.add(subset.join(','));
+  });
+});
+
+// 辅助函数：生成数组的所有子集
+function generateSubsets(arr) {
+  const result = [];
+  const total = 1 << arr.length; // 2 的 n 次方
+  for (let i = 1; i < total; i++) { // 从 1 开始，排除空集
+    const subset = [];
+    for (let j = 0; j < arr.length; j++) {
+      if ((i >> j) & 1) {
+        subset.push(arr[j]);
+      }
+    }
+    // 保持顺序一致，确保 "A,B" 和 "B,A" 是一样的（虽然上面已经 sort 了）
+    result.push(subset);
   }
-};
+  return result;
+}
 ```
+
+##### 第二步：渲染与状态计算
+
+在渲染每个规格按钮时，动态计算 `disabled` 状态。
+
+```javascript
+// 当前用户已选的规格值 ID 列表 (例如：['1_红'])
+const selectedSpecIds = ['1_红']; 
+
+// 渲染循环：遍历所有规格行和值
+specsList.forEach(specRow => {
+  specRow.values.forEach(value => {
+    const valueId = value.id; // 例如 '2_M'
+    
+    // 1. 如果当前值已经被选中，自然是激活状态
+    if (selectedSpecIds.includes(valueId)) {
+      value.isSelected = true;
+      value.disabled = false;
+      return;
+    }
+
+    // 2. 如果当前值所在的规格行已经选了别的值（互斥），则禁用
+    // (这一步通常在 UI 层控制，单选逻辑)
+    
+    // 3. 核心判断：尝试将当前值加入已选集合，看路径是否存在
+    // 构造测试路径：已选 + 当前尝试的值
+    const testPath = [...selectedSpecIds, valueId].sort().join(',');
+    
+    // 查表！
+    if (pathMap.has(testPath)) {
+      value.disabled = false; // 路径存在，可选
+    } else {
+      value.disabled = true;  // 路径不存在，置灰
+    }
+  });
+});
+```
+
+##### 第三步：处理用户点击
+
+1. 用户点击某个按钮。
+2. 更新 `selectedSpecIds`。
+3. **触发重新渲染**（Vue/React 自动处理）。
+4. 上述“第二步”的逻辑再次运行，但由于查表是 O(1)，即使有几百个规格值，界面也是秒级响应。
+5. 如果 `selectedSpecIds` 的长度等于规格行数，说明选完了，直接去 `skus` 数组里找对应的完整 SKU 展示价格和库存。
 
 ## 三、核心算法：动态计算可选状态
 
