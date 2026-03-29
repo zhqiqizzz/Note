@@ -2,21 +2,13 @@
 
 实现一个生产级的 WebSocket 聊天系统，核心难点不在于“连接”，而在于**“维持连接的稳定性”**（心跳）和**“应对网络波动”**（断线重连）。
 
-下面我将分步骤讲解如何实现，并提供一套**工业级的前端代码模板**。
-
----
-
 ### 一、核心架构设计
 
 #### 1. 通信协议设计
 
 不要直接发送纯文本，建议封装成 **JSON 协议**，区分消息类型：
 
-json
-
-编辑
-
-```
+```json
 {
   "type": "CHAT",       // 消息类型：CHAT, HEARTBEAT, ACK, SYSTEM
   "data": {             //  payload
@@ -46,17 +38,11 @@ json
 - **目的**：避免服务器瞬间被大量重连请求打挂（惊群效应）。
 - **上限**：重连次数超过一定阈值（如 10 次）后，停止重连，提示用户“网络异常，请手动刷新”。
 
----
-
 ### 二、前端实现代码 (Vue 3 + TypeScript/JS)
 
 这是一个封装好的 `useWebSocket` Hook，包含了**心跳、重连、消息队列、状态管理**。
 
-javascript
-
-编辑
-
-```
+```javascript
 // composables/useChatWebSocket.js
 import { ref, onUnmounted } from 'vue';
 
