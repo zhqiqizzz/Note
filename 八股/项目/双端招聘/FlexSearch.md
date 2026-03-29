@@ -270,11 +270,11 @@ FlexSearch 本身是一个文本搜索引擎，它不懂中文拼音。
 
 在建立索引前，代码 `generateSearchText` 会把每个职位变成一长串字符。
 
-|ID|原始标题|**生成的 `_searchText` (索引用的长字符串)**|
-|---|---|---|
-|**101**|Java 工程师|`java 工程师 ali java gong cheng shi jgcs`|
-|**102**|会计专员|`会计专员 tencent kuai ji zhuan yuan kjzy`|
-|**103**|前端开发|`前端开发 bytedance qian duan kai fa qdkf`|
+| ID      | 原始标题     | **生成的 `_searchText` (索引用的长字符串)**        |
+| ------- | -------- | --------------------------------------- |
+| **101** | Java 工程师 | `java 工程师 ali java gong cheng shi jgcs` |
+| **102** | 会计专员     | `会计专员 tencent kuai ji zhuan yuan kjzy`  |
+| **103** | 前端开发     | `前端开发 bytedance qian duan kai fa qdkf`  |
 _(注：为了演示，我省略了部分拼音，只保留关键部分)_
 
 ###### 3. 最终生成的【目录映射表】
