@@ -170,8 +170,6 @@ self.onmessage = function(e) {
 };
 ```
 
----
-
 ## 五、应用场景
 
 ### 5.1 CPU 密集型计算
@@ -203,16 +201,14 @@ self.onmessage = function(e) {
 
 ## 六、限制与注意事项
 
-表格
-
-|限制|说明|
-|---|---|
-|❌ 不能操作 DOM|Worker 无 `document`、`window` 对象|
-|❌ 不能访问部分 API|如 `localStorage`、`alert` 等|
-|✅ 可使用网络 API|`fetch`、`XMLHttpRequest`|
-|✅ 可使用定时器|`setTimeout`、`setInterval`|
-|⚠️ 同源策略|Worker 脚本必须同源|
-|⚠️ 资源开销|每个 Worker 消耗独立内存和 CPU|
+| 限制           | 说明                              |
+| ------------ | ------------------------------- |
+| ❌ 不能操作 DOM   | Worker 无 `document`、`window` 对象 |
+| ❌ 不能访问部分 API | 如 `localStorage`、`alert` 等      |
+| ✅ 可使用网络 API  | `fetch`、`XMLHttpRequest`        |
+| ✅ 可使用定时器     | `setTimeout`、`setInterval`      |
+| ⚠️ 同源策略      | Worker 脚本必须同源                   |
+| ⚠️ 资源开销      | 每个 Worker 消耗独立内存和 CPU           |
 
 ### 6.1 可用全局对象
 
@@ -287,8 +283,6 @@ class WorkerPool {
 }
 ```
 
----
-
 ## 八、高级特性
 
 ### 8.1 SharedArrayBuffer + Atomics
@@ -316,8 +310,6 @@ const worker = new Worker('worker.js', { type: 'module' });
 import { helper } from './utils.js';
 export const VERSION = '1.0';
 ```
-
----
 
 ## 九、总结
 
