@@ -20,11 +20,11 @@
 ### [Slot插槽](vue/常用/Slot插槽.md)
 ### [v-bind](vue/常用/v-bind.md)
 
-## [生命周期](vue/生命周期.md)
+## [生命周期](vue/Vue/生命周期.md)
 
-## [自定义指令](vue/自定义指令.md)
+## [自定义指令](vue/常用/自定义指令.md)
 
-## [Pinia](vue/Pinia.md)
+## [Pinia](vue/路由/Pinia.md)
 
 
 
@@ -35,11 +35,11 @@
 ### [Vue 框架的编译与渲染](vue/页面渲染/Vue%20框架的编译与渲染.md)
 
 
-## [Vue 修饰符](vue/Vue%20修饰符.md)
+## [Vue 修饰符](vue/常用/Vue%20修饰符.md)
 
-## [指令（v-）](vue/指令（v-）.md)
+## [指令（v-）](vue/常用/指令（v-）.md)
 
-## [MVVM](vue/MVVM.md)
+## [MVVM](vue/Vue/MVVM.md)
 
 ## 网络
 ### [XSS](vue/网络/XSS.md)
