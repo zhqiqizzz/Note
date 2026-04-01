@@ -49,7 +49,6 @@ Set-Cookie: sessionId=abc123xyz; HttpOnly; Path=/
 2. **本地开发的例外**：
     
     浏览器对 `localhost`/`127.0.0.1` 有特殊照顾 —— 即使是 HTTP，也可能携带 `Secure` Cookie（方便本地开发），但**生产环境必须用 HTTPS**，否则这个 Cookie 发不出去。
-    
 
 ### 实际开发中的影响
 
