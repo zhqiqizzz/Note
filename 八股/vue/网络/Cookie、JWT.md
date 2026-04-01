@@ -29,6 +29,18 @@
     Cookie: sessionId=abc123xyz
 ```
 
+```mermaid
+sequenceDiagram
+	participant 浏览器
+	participant 服务器
+	浏览器->>服务器: 1. 发送登录请求（账号密码）
+	服务器->>服务器: 2. 验证账号，生成会话ID（SessionID），存入数据库/Redis
+	服务器->>浏览器: 3. 响应头添加 Set-Cookie，写入SessionID+安全属性
+	Note over 浏览器: 4. 浏览器自动存储Cookie
+	浏览器->>服务器: 5. 后续同源请求，自动在请求头携带Cookie
+	服务器->>服务器: 6. 读取Cookie中的SessionID，对比数据库，验证用户身份
+	服务器->>浏览器: 7. 返回对应业务数据
+```
 ### 前端具体操作
 
 Session+Cookie 对前端非常 “省心”，大部分工作浏览器和后端做了：
@@ -105,6 +117,18 @@ Header.Payload.Signature
     }
 ```
 
+```mermaid
+sequenceDiagram
+	participant 浏览器
+	participant 服务器
+	浏览器->>服务器: 1. 发送登录请求（账号密码）
+	服务器->>服务器: 2. 验证账号，用密钥生成JWT Token（含用户ID、角色、过期时间）
+	服务器->>浏览器: 3. 把Token直接返回给前端
+	Note over 浏览器: 4. 前端手动把Token存在localStorage/Pinia中
+	浏览器->>服务器: 5. 后续请求，前端手动在请求头添加 Authorization: Bearer <token>
+	服务器->>服务器: 6. 取出Token，验证签名合法性、过期时间，解析用户信息
+	服务器->>浏览器: 7. 返回对应业务数据
+```
 ### 前端具体操作
 
 JWT 对前端的 “操作量” 比 Session+Cookie 多一点，核心是**存储和携带**：
