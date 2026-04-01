@@ -44,7 +44,7 @@ const linkTitle = ref('Vue官方文档')
 
 ### 2. 绑定布尔属性（`disabled`/`checked`/`hidden` 等）
 
-对于 `disabled`、`checked` 这类布尔属性，当绑定的表达式为**真值**时，属性会被添加到元素上；为**假值**时，属性会被移除。
+对于 `disabled`、`checked` 这类布尔属性，当绑定的表达式为**真值**时，属性会被添加到元素上；为**假值**时，属性会被移除（DOM移除）。
 
 ```vue
 <template>
