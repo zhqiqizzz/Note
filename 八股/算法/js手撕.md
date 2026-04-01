@@ -409,5 +409,58 @@ const arr = [1, [2, [3, 4]]]
 ### 反扁平
 
 ```js
+// 后端返回的扁平数组（带 id 和 parentId）
+const flatList = [
+  { id: 1, name: '一级菜单1', parentId: null },
+  { id: 2, name: '二级菜单1-1', parentId: 1 },
+  { id: 3, name: '三级菜单1-1-1', parentId: 2 },
+  { id: 4, name: '二级菜单1-2', parentId: 1 },
+  { id: 5, name: '一级菜单2', parentId: null }
+];
 
+function listToTree(list) {
+	const map = {}
+	const tree = []
+	list.foreach((item) => {
+		map[item.id] = {...item, children: []}
+	})
+	
+	list.foreach((item) => {
+		const node = map[item.id]
+		if(item.parentId === null){
+			tree.push(node)
+		} else {
+			const parent = map[item.parentId]
+			if(parent){
+				parent.children.push(node)
+			}
+		}
+	})
+	return tree
+}
+
+// 测试
+const tree = listToTree(flatList);
+console.log(tree);
+/* 输出：
+[
+  {
+    id: 1,
+    name: '一级菜单1',
+    parentId: null,
+    children: [
+      {
+        id: 2,
+        name: '二级菜单1-1',
+        parentId: 1,
+        children: [
+          { id: 3, name: '三级菜单1-1-1', parentId: 2, children: [] }
+        ]
+      },
+      { id: 4, name: '二级菜单1-2', parentId: 1, children: [] }
+    ]
+  },
+  { id: 5, name: '一级菜单2', parentId: null, children: [] }
+]
+*/
 ```
