@@ -55,7 +55,7 @@ my-project/
 
 **优势**：根目录更干净，区分了“源代码”与“配置/依赖”，便于大型项目管理。
 
-#### 2. ⚡ Nitro 3.0 引擎：极致性能
+#### 2. Nitro 3.0 引擎：极致性能
 
 Nuxt 的服务端引擎 **Nitro** 升级到 3.0 版本：
 
@@ -63,7 +63,7 @@ Nuxt 的服务端引擎 **Nitro** 升级到 3.0 版本：
 - **边缘计算支持**：完美部署到 Cloudflare Workers, Vercel Edge, Netlify Edge 等边缘节点，实现全球低延迟。
 - **混合渲染增强**：更精细地控制每个路由的缓存策略（SWR, ISR, 静态, 动态）。
 
-#### 3. 🛡️ 更强的类型安全 (TypeScript)
+#### 3. 更强的类型安全 (TypeScript)
 
 Nuxt 4 将 TypeScript 支持提升到了新高度：
 
@@ -71,7 +71,7 @@ Nuxt 4 将 TypeScript 支持提升到了新高度：
 - **严格模式默认开启**：新项目默认启用更严格的 TS 配置，减少运行时错误。
 - **模块类型优化**：第三方 Nuxt 模块的类型定义更加完善。
 
-#### 4. 🎯 智能数据获取
+#### 4. 智能数据获取
 
 改进了 `useFetch` 和 `useAsyncData` 的行为：
 
@@ -79,7 +79,7 @@ Nuxt 4 将 TypeScript 支持提升到了新高度：
 - **错误处理**：提供更统一的错误边界处理机制。
 - **类型提示**：在模板中直接使用 `data.value` 时，拥有完整的智能提示。
 
-#### 5. 🧩 模块化与自动导入
+#### 5. 模块化与自动导入
 
 - **自动导入 (Auto-imports)**：继续保留 Nuxt 的杀手锏。`ref`, `computed`, `useRoute`, 自定义 Composables, 组件等无需手动 import，直接使用。
 - **Nuxt Modules**：一键集成 Tailwind CSS, Pinia, i18n, PWA, Image 等功能。
@@ -94,12 +94,12 @@ Nuxt 4 将 TypeScript 支持提升到了新高度：
 
 Nuxt 允许你为每个页面选择最适合的渲染策略：
 
-|模式|描述|适用场景|配置示例|
-|---|---|---|---|
-|**SSR** (服务端渲染)|每次请求都在服务器渲染 HTML|动态内容、个人中心、实时数据|`export default defineNuxtPageMeta({ ssr: true })`|
-|**SSG** (静态生成)|构建时生成静态 HTML|博客、文档、营销页|`nuxt.config.ts` 中设置 `ssr: false` + `nitro.static`|
-|**CSR** (客户端渲染)|传统 SPA 模式，浏览器渲染|后台管理系统、Dashboard|`export default defineNuxtPageMeta({ ssr: false })`|
-|**ISR** (增量静态再生)|静态页面，但定期或在请求时后台更新|电商产品页、新闻详情|`export default defineNuxtPageMeta({ cache: { maxAge: 60 } })`|
+| 模式               | 描述                | 适用场景             | 配置示例                                                           |
+| ---------------- | ----------------- | ---------------- | -------------------------------------------------------------- |
+| **SSR** (服务端渲染)  | 每次请求都在服务器渲染 HTML  | 动态内容、个人中心、实时数据   | `export default defineNuxtPageMeta({ ssr: true })`             |
+| **SSG** (静态生成)   | 构建时生成静态 HTML      | 博客、文档、营销页        | `nuxt.config.ts` 中设置 `ssr: false` + `nitro.static`             |
+| **CSR** (客户端渲染)  | 传统 SPA 模式，浏览器渲染   | 后台管理系统、Dashboard | `export default defineNuxtPageMeta({ ssr: false })`            |
+| **ISR** (增量静态再生) | 静态页面，但定期或在请求时后台更新 | 电商产品页、新闻详情       | `export default defineNuxtPageMeta({ cache: { maxAge: 60 } })` |
 
 #### 2. 全栈开发：内置 API 服务
 
