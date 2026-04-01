@@ -16,8 +16,6 @@ JavaScript 中，内存的使用分为三个阶段：
 
 JavaScript 引擎的垃圾回收算法经历了迭代，目前主流是**标记清除（Mark-and-Sweep）** 及其优化版本，早期的**引用计数（Reference Counting）** 因存在缺陷已被淘汰。
 
----
-
 ### 1. 引用计数（早期算法，已淘汰）
 
 #### 核心原理
@@ -52,8 +50,6 @@ function createLeak() {
 createLeak();
 // 函数执行完，objA 和 objB 互相引用，计数永远不为 0，无法回收
 ```
-
----
 
 ### 2. 标记清除（Mark-and-Sweep，现代主流基础算法）
 
