@@ -392,3 +392,22 @@ function sortVersions(versions) {
   });
 }
 ```
+
+## 12. 扁平化和反扁平
+
+### 扁平化
+
+```js
+function flatten(arr) {
+	while(arr.some((item) => Array.isArray(item))){
+		arr = [].concat(...arr)
+	}
+}
+const arr = [1, [2, [3, 4]]]
+```
+
+### 反扁平
+
+```js
+
+```
