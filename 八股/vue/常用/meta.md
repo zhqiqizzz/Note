@@ -256,13 +256,13 @@ declare module 'vue-router' {
 
 ### 总结
 
-|功能|配置示例 (`meta`)|实现位置|
-|---|---|---|
-|**页面标题**|`{ title: '关于我' }`|`router.beforeEach` -> `document.title`|
-|**登录验证**|`{ requiresAuth: true }`|`router.beforeEach` -> 检查 Token|
-|**角色权限**|`{ roles: ['admin'] }`|`router.beforeEach` -> 比对用户角色|
-|**页面缓存**|`{ keepAlive: true }`|`App.vue` -> `<keep-alive include>`|
-|**布局切换**|`{ layout: 'AdminLayout' }`|`App.vue` -> 动态组件 `<component>`|
-|**菜单隐藏**|`{ hideInMenu: true }`|侧边栏组件 -> `v-if="!item.meta.hideInMenu"`|
+| 功能       | 配置示例 (`meta`)               | 实现位置                                    |
+| -------- | --------------------------- | --------------------------------------- |
+| **页面标题** | `{ title: '关于我' }`          | `router.beforeEach` -> `document.title` |
+| **登录验证** | `{ requiresAuth: true }`    | `router.beforeEach` -> 检查 Token         |
+| **角色权限** | `{ roles: ['admin'] }`      | `router.beforeEach` -> 比对用户角色           |
+| **页面缓存** | `{ keepAlive: true }`       | `App.vue` -> `<keep-alive include>`     |
+| **布局切换** | `{ layout: 'AdminLayout' }` | `App.vue` -> 动态组件 `<component>`         |
+| **菜单隐藏** | `{ hideInMenu: true }`      | 侧边栏组件 -> `v-if="!item.meta.hideInMenu"` |
 
 `meta` 是 Vue Router 连接“路由配置”与“业务逻辑”的桥梁，合理使用可以让你的代码结构更清晰，避免硬编码。
