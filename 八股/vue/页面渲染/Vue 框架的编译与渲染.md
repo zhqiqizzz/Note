@@ -25,6 +25,8 @@
 ```
 
 > 补充： 首次执行 `renderEffect` 时，会调用 `component.render()`，构建出 [虚拟 DOM](虚拟%20DOM.md) 
+> 
+> 另外：为什么renderEffect能再次构建新虚拟DOM，是因为，在初始化组件的时候，他访问了响应式数据，此时proxy做了同步依赖收集，对这个属性绑定了这个副作用函数；再当数据变化的时候，反过来调用renderEffect函数，使得构建新虚拟DOM，再进行后面的patch对比
 ## 二、详细拆解每个环节
 
 ### 1. 模板（Template）：用户友好的声明式语法
