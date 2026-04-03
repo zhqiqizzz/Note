@@ -138,6 +138,14 @@ function generateSubsets(arr) {
   }
   return result;
 }
+
+function generateSubset(arr) => {
+	let uniqueArr = [...new Set(arr)]
+	let res = [[]]
+	for(const num of uniqueArr){
+		const new 
+	}
+}
 ```
 
 ##### 第二步：渲染与状态计算
