@@ -139,12 +139,15 @@ function generateSubsets(arr) {
   return result;
 }
 
+// 幂集算法
 function generateSubset(arr) => {
 	let uniqueArr = [...new Set(arr)]
 	let res = [[]]
-	for(const num of uniqueArr){
-		const new 
+	for(const item of uniqueArr){
+		const newSubsets = res.map(subset => [...subset, item])
+		res = [...res, ...newSubsets]
 	}
+	return res
 }
 ```
 
