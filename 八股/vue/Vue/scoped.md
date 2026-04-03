@@ -44,12 +44,12 @@
 
 随着 Vue 版本和预处理器（Sass/Less/Stylus）的更新，穿透语法经历了几次变化。**目前在 Vue 3 及新版 Vue 2 项目中，推荐使用 `:deep()`**。
 
-|语法|适用场景|状态|示例|
-|---|---|---|---|
-|**`:deep()`**|Vue 3, Vue 2 (新版)|**推荐 ✅**|`.parent :deep(.child) { color: red; }`|
-|**`::v-deep`**|Vue 2, Vue 3 (兼容)|可用|`.parent ::v-deep .child { color: red; }`|
-|**`/deep/`**|旧版 Vue 2 + 某些预处理器|❌ 已废弃/不支持|`.parent /deep/ .child { ... }`|
-|**`>>>`**|原生 CSS, 部分预处理器|⚠️ 兼容性差|`.parent >>> .child { ... }`|
+| 语法             | 适用场景              | 状态        | 示例                                        |
+| -------------- | ----------------- | --------- | ----------------------------------------- |
+| **`:deep()`**  | Vue 3, Vue 2 (新版) | **推荐 ✅**  | `.parent :deep(.child) { color: red; }`   |
+| **`::v-deep`** | Vue 2, Vue 3 (兼容) | 可用        | `.parent ::v-deep .child { color: red; }` |
+| **`/deep/`**   | 旧版 Vue 2 + 某些预处理器 | ❌ 已废弃/不支持 | `.parent /deep/ .child { ... }`           |
+| **`>>>`**      | 原生 CSS, 部分预处理器    | ⚠️ 兼容性差   | `.parent >>> .child { ... }`              |
 
 #### 代码示例：
 
