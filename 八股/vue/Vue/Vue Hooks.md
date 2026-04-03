@@ -133,8 +133,6 @@ onBeforeUnmount(() => {
 
 以下是 3 个最常用的实战示例：
 
----
-
 ### 示例 1：`useMouse` —— 跟踪鼠标位置
 
 封装 “获取鼠标实时位置” 的逻辑，可在任意组件中直接复用。
@@ -187,8 +185,6 @@ const { x, y } = useMouse()
   </div>
 </template>
 ```
-
----
 
 ### 示例 2：`useFetch` —— 封装数据请求
 
@@ -253,8 +249,6 @@ const { data, loading, error, execute } = useFetch('https://api.example.com/user
   </div>
 </template>
 ```
-
----
 
 ### 示例 3：`useDebounce` —— 封装防抖逻辑
 
