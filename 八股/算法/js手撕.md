@@ -214,34 +214,7 @@ function myNew(constructor, ...args) {
 }
 ```
 
-## 5. 数组扁平化 (Array Flatten)
-
-**题目：** 将 `[1, [2, [3]], 4]` 变成 `[1, 2, 3, 4]`。
-
-### 方案 A：递归法 (最通用)
-
-```JavaScript
-function flatten(arr) {
-  let result = [];
-  for (let i = 0; i < arr.length; i++) {
-    if (Array.isArray(arr[i])) {
-      result = result.concat(flatten(arr[i]));
-    } else {
-      result.push(arr[i]);
-    }
-  }
-  return result;
-}
-```
-
-### 方案 B：ES6 的 flat 方法
-
-```JavaScript
-// 简单面试可以直接写这个，但面试官通常想看上面的递归实现
-arr.flat(Infinity);
-```
-
-## 6. 发布订阅模式 (EventEmitter)
+## 5. 发布订阅模式 (EventEmitter)
 
 **核心逻辑：** 这是 Vue 和 Node.js 事件机制的核心。你需要维护一个“调度中心”（通常是一个对象），通过 `on` 存入回调，`emit` 触发回调。
 
@@ -283,7 +256,7 @@ class EventEmitter {
 
 - **讲解：** `once` 的实现是难点，关键在于创建一个临时的包装函数，它在执行完业务逻辑后会自动把自己“踢出”订阅列表。
 
-## 7. 函数柯里化 (Currying)
+## 6. 函数柯里化 (Currying)
 
 **核心逻辑：** 将一个接收多个参数的函数，转化为接收单一参数并返回新函数的形式。利用闭包保存已传入的参数。
 
@@ -310,7 +283,7 @@ console.log(curriedAdd(1)(2)(3)); // 6
 
 - **讲解：** `fn.length` 可以获取函数定义时的形参个数。这是递归判断是否该终止并执行的关键。
 
-## 8. 手写数组去重 (Unique)
+## 7. 手写数组去重 (Unique)
 
 面试官通常会让你给出多种方案，从简单到复杂。
 
@@ -331,7 +304,7 @@ function unique(arr) {
 }
 ```
 
-## 9. 手写 call、apply、bind
+## 8. 手写 call、apply、bind
 
 **核心逻辑：** 改变 `this` 指向。原理是把函数挂载到目标对象上作为其属性执行，执行后再删掉该属性。
 ### 1. 手写 `call`
@@ -408,7 +381,7 @@ Function.prototype.myBind = function(context, ...args) {
 };
 ```
 
-## 10. 异步串行执行 (Array Reduce 妙用)
+## 9. 异步串行执行 (Array Reduce 妙用)
 
 **场景：** 有多个异步任务，需要等第一个完成后再执行第二个（类似中间件流）。
 
@@ -426,7 +399,7 @@ function runPromisesInSeries(promises) {
 
 - **讲解：** 利用 `reduce` 初始值传入一个 `Promise.resolve([])`，每一轮迭代都在前一个 Promise 的 `.then` 后面挂载新的 Promise。
 
-## 11. 版本号排序
+## 10. 版本号排序
 
 版本号排序（Version Sorting）是前端面试中非常经典的一道题。它不仅考察你对数组 `sort` 方法的理解，更考察你对**字符串处理**、**补齐思想**以及**边界情况**的思考。
 
@@ -497,7 +470,7 @@ function sortVersions(versions) {
 }
 ```
 
-## 12. 扁平化和反扁平
+## 11. 扁平化和反扁平
 
 ### 扁平化
 
