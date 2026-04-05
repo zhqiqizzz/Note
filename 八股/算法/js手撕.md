@@ -70,65 +70,103 @@ function throttle(fn, delay) {
 ### 1. 手写promise
 
 ```js
-Class myPromise {
-	constructor(executor){
-		this.status = "pending"
-		this.value = undefined
-		this.reason = undefined
-		this.onResolveCallback = []
-		this.onRejectCallback = []
-		const resolve = (value) => {
-			if(this.status === "pending"){
-				this.status = "fulfilled"
-				this.value = value
-				this.onResolveCallback.forEach((fn) => fn())
-			}
-		}
-		const reject = (reason) => {
-			if(this.status === "pending"){
-				this.status = "rejected"
-				this.reason = reason
-				this.onRejectCallback.forEach((fn) => fn())
-			}
-		}
-		try{
-			executor(resolve, reject)
-		} catch(err) {
-			reject(err)
-		}
-	}
-	
-	then(onFulfilled, onRejected) => {
-		onFulfilled = typeof onFulfilled === "function" ? onFulfilled : val => val
-		onRejected = typeof onRejected === "function" ? onRejected : err => {throw err}
-		
-		return new myPromise((resolve, reject) => {
-			const handle = (callback, val) => {
-				setTimeout(() => {
-					try{
-						const x = callback(val)
-						if(x instanceof myPromise){
-							x.then(resolve, reject)
-						} else {
-							resolve(x)
-						}
-					} catch(err) {
-						reject(err)
-					}
-				})
-			}
-			
-			if(this.status === "fulfilled"){
-				handle(onFulfilled, this.value)
-			} else if(this.status === "rejected"){
-				handle(onRejected, this.reason)
-			} else {
-				this.onResolvCallback.push(() => handle(onFulfilled, this.value)); 
-				this.onRejectedCallback.push(() => handle(onRejected, this.reason));
-			}
-		})
-	}
+class MyPromise {
+  constructor(executor) {
+    this.status = 'pending'; // 状态：pending | fulfilled | rejected
+    this.value = undefined;  // 成功的值
+    this.reason = undefined; // 失败的原因
+    this.onResolvedCallbacks = []; // 成功回调的数组（发布订阅）
+    this.onRejectedCallbacks = []; // 失败回调的数组
+
+    const resolve = (value) => {
+      if (this.status === 'pending') {
+        this.status = 'fulfilled';
+        this.value = value;
+        this.onResolvedCallbacks.forEach(fn => fn()); // 执行所有成功回调
+      }
+    };
+
+    const reject = (reason) => {
+      if (this.status === 'pending') {
+        this.status = 'rejected';
+        this.reason = reason;
+        this.onRejectedCallbacks.forEach(fn => fn()); // 执行所有失败回调
+      }
+    };
+
+    try {
+      executor(resolve, reject); // 立即执行
+    } catch (err) {
+      reject(err);
+    }
+  }
+
+  then(onFulfilled, onRejected) {
+    // 1. 处理值穿透（如果不传回调，直接把值往后传递）
+    onFulfilled = typeof onFulfilled === 'function' ? onFulfilled : val => val;
+    onRejected = typeof onRejected === 'function' ? onRejected : err => { throw err };
+
+    // 2. 返回一个新的 Promise 实现链式调用
+    return new MyPromise((resolve, reject) => {
+      
+      // 封装一个处理函数，用来处理 then 回调的返回值 x
+      const handle = (callback, val) => {
+        // setTimeout 模拟异步微任务
+        setTimeout(() => {
+          try {
+            const x = callback(val);
+            // 极简版处理：如果 x 是 MyPromise 实例，直接调用它的 then；否则直接 resolve
+            if (x instanceof MyPromise) {
+              x.then(resolve, reject);
+            } else {
+              resolve(x);
+            }
+          } catch (err) {
+            reject(err);
+          }
+        });
+      };
+
+      // 3. 根据当前状态，决定是立即执行还是存入数组
+      if (this.status === 'fulfilled') {
+        handle(onFulfilled, this.value);
+      } 
+      else if (this.status === 'rejected') {
+        handle(onRejected, this.reason);
+      } 
+      else if (this.status === 'pending') {
+        // 还没出结果，先把函数存起来（注意这里也要包一层 handle）
+        this.onResolvedCallbacks.push(() => handle(onFulfilled, this.value));
+        this.onRejectedCallbacks.push(() => handle(onRejected, this.reason));
+      }
+    });
+  }
 }
+
+console.log('1. 开始测试');
+
+const p1 = new MyPromise((resolve, reject) => {
+  console.log('2. 进入 Promise 执行器');
+  // 模拟异步操作，比如接口请求
+  setTimeout(() => {
+    resolve('3. 异步操作成功！');
+  }, 1000);
+});
+
+p1.then((res) => {
+  console.log('4. 接收到结果:', res);
+});
+
+console.log('5. 同步代码执行完毕');
+
+/*
+预期打印顺序：
+1. 开始测试
+2. 进入 Promise 执行器
+3. 同步代码执行完毕
+(等待 1 秒后)
+4. 接收到结果: 3. 异步操作成功！
+*/
 ```
 
 ### 2. 手写promise.all
