@@ -70,7 +70,65 @@ function throttle(fn, delay) {
 ### 1. 手写promise
 
 ```js
-
+Class myPromise {
+	constructor(executor){
+		this.status = "pending"
+		this.value = undefined
+		this.reason = undefined
+		this.onResolveCallback = []
+		this.onRejectCallback = []
+		const resolve = (value) => {
+			if(this.status === "pending"){
+				this.status = "fulfilled"
+				this.value = value
+				this.onResolveCallback.forEach((fn) => fn())
+			}
+		}
+		const reject = (reason) => {
+			if(this.status === "pending"){
+				this.status = "rejected"
+				this.reason = reason
+				this.onRejectCallback.forEach((fn) => fn())
+			}
+		}
+		try{
+			executor(resolve, reject)
+		} catch(err) {
+			reject(err)
+		}
+	}
+	
+	then(onFulfilled, onRejected) => {
+		onFulfilled = typeof onFulfilled === "function" ? onFulfilled : val => val
+		onRejected = typeof onRejected === "function" ? onRejected : err => {throw err}
+		
+		return new myPromise((resolve, reject) => {
+			const handle = (callback, val) => {
+				setTimeout(() => {
+					try{
+						const x = callback(val)
+						if(x instanceof myPromise){
+							x.then(resolve, reject)
+						} else {
+							resolve(x)
+						}
+					} catch(err) {
+						reject(err)
+					}
+				})
+			}
+			
+			if(this.status === "fulfilled"){
+				handle(onFulfilled, this.value)
+			} else if(this.status === "rejected"){
+				handle(onRejected, this.reason)
+			} else {
+				this.onResolvCallback.push(() => handle(onFulfilled, this.value)); 
+				this.onRejectedCallback.push(() => handle(onRejected, this.reason));
+			}
+		})
+	}
+}
 ```
 
 ### 2. 手写promise.all
