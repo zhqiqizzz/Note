@@ -26,7 +26,7 @@ Webpack 的工作方式是“打包优先”（bundle-based）。无论是开发
 
 Vite 充分利用了现代浏览器原生支持 **ES Modules (ESM)** 的特性，将开发和生产环境区分开来。
 
-> 补充： [ESM](ESM.md) 
+> 补充： [ESM (ECMAScript Module)](ESM%20(ECMAScript%20Module).md) 
 
 1. **开发环境**：
     - **不打包**：启动时，Vite 服务器几乎瞬间启动，不做任何打包操作。

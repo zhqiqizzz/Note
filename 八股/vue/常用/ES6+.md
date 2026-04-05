@@ -334,7 +334,7 @@ getData();
 
 ## 七、模块化：`import` / `export`
 
-> 底层基于 [ESM](../工程化/ESM.md) 
+> 底层基于 [ESM (ECMAScript Module)](../工程化/ESM%20(ECMAScript%20Module).md) 
 
 ES6 原生支持模块化，替代了之前的 CommonJS（`require`/`module.exports`）。
 ### 1. 命名导出（Named Export）
