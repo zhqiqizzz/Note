@@ -163,6 +163,19 @@ sequenceDiagram
 5. 微信开放平台校验所有信息合法后，返回 Access Token 和 OpenID，美团后端再用 Access Token 去微信获取用户的昵称、头像等信息；
 6. 美团后端用 OpenID 作为用户的唯一标识，自动完成注册（新用户）或登录（老用户），生成美团自己的业务令牌，返回给 APP，登录完成。
 
+```js
+// 美团APP前端（iOS/Android/Flutter） 
+// 1. 微信授权回调，拿到 code 
+WeChatSDK.authCallback((result) => { const code = result.code; // 临时授权码 
+	// 2. 前端主动发给自己后端 
+	fetch('https://api.meituan.com/auth/wechat/code', {
+		method: 'POST', 
+		body: JSON.stringify({ code: code })
+	}).then(res => { 
+		// 后端处理完成，登录成功
+	}); 
+});
+```
 ### 这个方案的核心优势
 
 1. **用户体验拉满**：不用记多个账号密码，一键登录，1 秒完成；
