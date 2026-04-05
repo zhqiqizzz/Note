@@ -65,7 +65,15 @@ function throttle(fn, delay) {
 }
 ```
 
-## 3. 手写 Promise.all
+## 3. 手写 Promise
+
+### 1. 手写promise
+
+```js
+
+```
+
+### 2. 手写promise.all
 
 **核心逻辑：** 接收一个 Promise 数组，只有当所有 Promise 都成功时才返回结果数组；只要有一个失败，就直接 Reject。
 
