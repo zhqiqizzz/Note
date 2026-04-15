@@ -21,14 +21,14 @@
 
 描述设备的具体特征，常用特性：
 
-|特性|说明|示例|
-|---|---|---|
-|`width`|视口宽度|`width: 768px`|
-|`min-width`|最小视口宽度（≥ 该值）|`min-width: 768px`|
-|`max-width`|最大视口宽度（≤ 该值）|`max-width: 768px`|
-|`height`|视口高度|`height: 1024px`|
-|`orientation`|屏幕方向|`orientation: portrait`（纵向）/ `landscape`（横向）|
-|`resolution`|设备分辨率|`resolution: 2dppx`（Retina 屏）|
+| 特性            | 说明           | 示例                                           |
+| ------------- | ------------ | -------------------------------------------- |
+| `width`       | 视口宽度         | `width: 768px`                               |
+| `min-width`   | 最小视口宽度（≥ 该值） | `min-width: 768px`                           |
+| `max-width`   | 最大视口宽度（≤ 该值） | `max-width: 768px`                           |
+| `height`      | 视口高度         | `height: 1024px`                             |
+| `orientation` | 屏幕方向         | `orientation: portrait`（纵向）/ `landscape`（横向） |
+| `resolution`  | 设备分辨率        | `resolution: 2dppx`（Retina 屏）                |
 
 ### 常用逻辑运算符
 
