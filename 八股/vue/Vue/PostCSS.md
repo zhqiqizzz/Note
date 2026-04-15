@@ -67,13 +67,13 @@ Vite 默认隐式启用了以下行为：
 
 虽然默认配置能满足 80% 的需求，但在以下场景你需要手动创建 `postcss.config.js` (或 `postcss.config.cjs`) 并安装插件：
 
-|场景|需要做什么|
-|---|---|
-|**移动端适配 (px 转 rem/vw)**|需安装 `postcss-px-to-viewport` 或 `postcss-pxtorem` 插件并配置参数。|
-|**使用 Tailwind CSS**|Tailwind 必须作为 PostCSS 插件运行，需安装 `tailwindcss` 和 `autoprefixer` 并初始化配置。|
-|**使用特定的嵌套语法**|如果你想在不使用 Sass/Less 的情况下直接在 CSS 中写嵌套 ( `.parent { .child {} }`)，需安装 `postcss-nested`。|
-|**定制兼容性策略**|如果默认的浏览器兼容性范围不符合你的需求，需显式配置 `autoprefixer` 的 `overrideBrowserslist`。|
-|**深度优化/压缩**|虽然生产模式会自动压缩，但如果你想定制压缩规则，需配置 `cssnano`。|
+| 场景                      | 需要做什么                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| **移动端适配 (px 转 rem/vw)** | 需安装 `postcss-px-to-viewport` 或 `postcss-pxtorem` 插件并配置参数。                            |
+| **使用 Tailwind CSS**     | Tailwind 必须作为 PostCSS 插件运行，需安装 `tailwindcss` 和 `autoprefixer` 并初始化配置。                |
+| **使用特定的嵌套语法**           | 如果你想在不使用 Sass/Less 的情况下直接在 CSS 中写嵌套 ( `.parent { .child {} }`)，需安装 `postcss-nested`。 |
+| **定制兼容性策略**             | 如果默认的浏览器兼容性范围不符合你的需求，需显式配置 `autoprefixer` 的 `overrideBrowserslist`。                  |
+| **深度优化/压缩**             | 虽然生产模式会自动压缩，但如果你想定制压缩规则，需配置 `cssnano`。                                               |
 
 **手动配置示例 (`postcss.config.js`)：**
 
