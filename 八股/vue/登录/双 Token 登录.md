@@ -39,7 +39,6 @@
     - 存储 Access Token（推荐：内存 / Vuex/Redux，避免持久化）
     - 存储 Refresh Token（**强制：HttpOnly+Secure+SameSite Cookie**，绝对不能存在 localStorage/sessionStorage）
     - 跳转到首页，登录完成
-    
 
 ### 阶段 2：正常访问受保护资源
 
@@ -111,12 +110,12 @@
 
 这是双 Token 模式最容易出错的地方，直接决定了系统的安全性：
 
-|存储位置|适用 Token|优点|缺点|安全建议|
-|---|---|---|---|---|
-|内存（Vuex/Redux）|Access Token|完全免疫 XSS 攻击|页面刷新后丢失|✅ 首选方案，刷新页面时用 Refresh Token 重新获取 Access Token|
-|HttpOnly Cookie|Refresh Token|JavaScript 无法读取，免疫 XSS 攻击；自动携带|存在 CSRF 风险|✅ 强制使用，同时设置`Secure`（仅 HTTPS 传输）和`SameSite=Strict/Lax`|
-|localStorage|不推荐任何 Token|持久化存储|完全暴露给 XSS 攻击，一旦被窃取可长期使用|❌ 绝对禁止存储 Refresh Token，尽量不要存储 Access Token|
-|sessionStorage|不推荐任何 Token|关闭标签页后自动清除|仍暴露给 XSS 攻击|❌ 不推荐|
+| 存储位置            | 适用 Token      | 优点                             | 缺点                      | 安全建议                                                  |
+| --------------- | ------------- | ------------------------------ | ----------------------- | ----------------------------------------------------- |
+| 内存（Vuex/Redux）  | Access Token  | 完全免疫 XSS 攻击                    | 页面刷新后丢失                 | ✅ 首选方案，刷新页面时用 Refresh Token 重新获取 Access Token         |
+| HttpOnly Cookie | Refresh Token | JavaScript 无法读取，免疫 XSS 攻击；自动携带 | 存在 CSRF 风险              | ✅ 强制使用，同时设置`Secure`（仅 HTTPS 传输）和`SameSite=Strict/Lax` |
+| localStorage    | 不推荐任何 Token   | 持久化存储                          | 完全暴露给 XSS 攻击，一旦被窃取可长期使用 | ❌ 绝对禁止存储 Refresh Token，尽量不要存储 Access Token            |
+| sessionStorage  | 不推荐任何 Token   | 关闭标签页后自动清除                     | 仍暴露给 XSS 攻击             | ❌ 不推荐                                                 |
 
 ### 3. 服务器端存储方案
 
