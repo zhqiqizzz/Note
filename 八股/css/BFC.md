@@ -27,13 +27,13 @@
 
 这些方式也能创建 BFC，但会附带额外的布局影响，仅在特定场景使用：
 
-|CSS 属性|触发条件|副作用说明|
-|---|---|---|
-|`overflow`|值不为`visible`/`clip`（如`hidden`、`auto`、`scroll`）|传统最常用方案，但`overflow:hidden`会裁剪超出容器的内容，`scroll`会强制出现滚动条|
-|`float`|值不为`none`（如`left`/`right`）|元素会脱离文档流，变为浮动元素，影响父容器和后续兄弟元素的布局|
-|`position`|值为`absolute`/`fixed`|元素会完全脱离文档流，脱离正常的文档流布局|
-|`display`|`inline-block`/`table-cell`/`flex`/`grid`|会改变元素的默认盒模型和布局行为，其中 flex/grid 容器会创建独立的格式化上下文，天然具备 BFC 的隔离特性|
-|`contain`|值为`layout`/`content`/`paint`|用于限制元素的渲染范围，附带创建 BFC 的效果|
+| CSS 属性     | 触发条件                                           | 副作用说明                                                       |
+| ---------- | ---------------------------------------------- | ----------------------------------------------------------- |
+| `overflow` | 值不为`visible`/`clip`（如`hidden`、`auto`、`scroll`） | 传统最常用方案，但`overflow:hidden`会裁剪超出容器的内容，`scroll`会强制出现滚动条       |
+| `float`    | 值不为`none`（如`left`/`right`）                     | 元素会脱离文档流，变为浮动元素，影响父容器和后续兄弟元素的布局                             |
+| `position` | 值为`absolute`/`fixed`                           | 元素会完全脱离文档流，脱离正常的文档流布局                                       |
+| `display`  | `inline-block`/`table-cell`/`flex`/`grid`      | 会改变元素的默认盒模型和布局行为，其中 flex/grid 容器会创建独立的格式化上下文，天然具备 BFC 的隔离特性 |
+| `contain`  | 值为`layout`/`content`/`paint`                   | 用于限制元素的渲染范围，附带创建 BFC 的效果                                    |
 
 ## 二、BFC 的核心渲染规则
 
