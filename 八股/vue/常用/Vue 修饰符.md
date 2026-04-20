@@ -33,14 +33,14 @@ Vue 修饰符是以 **`.`** 开头的特殊后缀，用于**简化常见的 DOM 
 用于监听键盘事件的特定按键，直接加在 `@keyup`、`@keydown` 等键盘事件后面。
 #### 1. 常用按键别名
 
-|修饰符|对应按键|
-|---|---|
-|`.enter`|回车键|
-|`.tab`|Tab 键|
-|`.delete`|Delete/Backspace 键|
-|`.esc`|Esc 键|
-|`.space`|空格键|
-|`.up`/`.down`/`.left`/`.right`|方向键|
+| 修饰符                            | 对应按键               |
+| ------------------------------ | ------------------ |
+| `.enter`                       | 回车键                |
+| `.tab`                         | Tab 键              |
+| `.delete`                      | Delete/Backspace 键 |
+| `.esc`                         | Esc 键              |
+| `.space`                       | 空格键                |
+| `.up`/`.down`/`.left`/`.right` | 方向键                |
 **示例**：
 
 ```vue
@@ -52,12 +52,12 @@ Vue 修饰符是以 **`.`** 开头的特殊后缀，用于**简化常见的 DOM 
 
 需配合其他按键一起使用（按下系统键的同时按下其他键才触发）。
 
-|修饰符|对应按键|
-|---|---|
-|`.ctrl`|Ctrl 键|
-|`.alt`|Alt 键|
-|`.shift`|Shift 键|
-|`.meta`|Windows 键（Win）或 Command 键（Mac）|
+| 修饰符      | 对应按键                           |
+| -------- | ------------------------------ |
+| `.ctrl`  | Ctrl 键                         |
+| `.alt`   | Alt 键                          |
+| `.shift` | Shift 键                        |
+| `.meta`  | Windows 键（Win）或 Command 键（Mac） |
 **示例**：
 
 ```vue
