@@ -66,10 +66,10 @@
 
 ### 3. 分辨率相关
 
-|特性|含义|示例|
-|---|---|---|
-|`resolution`|设备分辨率|`(min-resolution: 2dppx)`（Retina 屏，2 倍像素密度）|
-|`min-resolution` / `max-resolution`|最小 / 最大分辨率|同宽度逻辑|
+| 特性                                  | 含义         | 示例                                          |
+| ----------------------------------- | ---------- | ------------------------------------------- |
+| `resolution`                        | 设备分辨率      | `(min-resolution: 2dppx)`（Retina 屏，2 倍像素密度） |
+| `min-resolution` / `max-resolution` | 最小 / 最大分辨率 | 同宽度逻辑                                       |
 
 > 单位说明：`dppx`（每像素点的物理像素数）是现代推荐单位，1dppx = 96dpi。
 
