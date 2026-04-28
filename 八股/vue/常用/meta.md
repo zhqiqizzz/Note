@@ -18,8 +18,8 @@ const routes = [
     component: Home,
     meta: { 
       title: '首页', 
-      requiresAuth: false, 
-      keepAlive: true 
+      requiresAuth: false,
+      keepAlive: true
     }
   },
   {
