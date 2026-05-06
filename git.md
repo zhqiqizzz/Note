@@ -136,3 +136,62 @@ Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
 ```
 
 如果看到 `Hi 用户名! You've successfully authenticated...` 的提示，说明连接成功，问题已解决。
+
+## 回退提交
+
+Git 版本回退主要有两个核心命令：`git reset` 和 `git revert`。它们的核心区别在于是否修改历史提交记录。
+
+- **`git reset`**: 移动分支指针，**会修改提交历史**。适用于**本地**的、**未推送到远程仓库**的提交。
+- **`git revert`**: 创建一个新的提交来撤销旧的提交，**不修改历史**。适用于**已推送到远程仓库**的、特别是团队协作中的提交。
+
+### git reset
+
+`git reset` 命令用于将当前分支的 HEAD 指针移动到指定的提交。根据参数的不同，它对暂存区和工作区的影响也不同。
+
+|模式|对工作区的影响|对暂存区的影响|对提交历史的影响|适用场景|
+|---|---|---|---|---|
+|`--soft`|**保持不变**|**保持不变**|**移动 HEAD 指针**|想撤销 commit，但保留代码以便重新提交（如合并多个提交）。|
+|`--mixed` (默认)|**保持不变**|**重置为指定提交**|**移动 HEAD 指针**|想撤销 commit 和 add，但保留代码以便修改后重新提交。|
+|`--hard`|**重置为指定提交**|**重置为指定提交**|**移动 HEAD 指针**|彻底丢弃指定提交之后的所有更改，**慎用！**|
+
+**常用命令示例：**
+
+```bash
+# 回退到上一个版本，代码保留在工作区（相当于 --mixed）
+git reset HEAD^
+
+# 回退到上一个版本，代码保留在暂存区
+git reset --soft HEAD^
+
+# 彻底回退到上一个版本，丢弃所有更改
+git reset --hard HEAD^
+
+# 回退到指定的提交版本
+git reset --hard <commit_id>
+git reset --soft <commit_id>   # 同理
+```
+
+### git revert
+
+`git revert` 命令会创建一个新的提交，其内容与指定的旧提交完全相反，从而在不改变历史的情况下抵消更改。这是团队协作中最安全的回退方式。
+
+**常用命令示例：**
+
+```bash
+# 撤销指定的提交，并自动生成一个新的提交
+git revert <commit_id>
+
+# 撤销指定的提交，但不自动提交，方便你修改后再提交
+git revert --no-commit <commit_id>
+```
+
+### 找回误操作的版本
+
+如果你不小心执行了 `git reset --hard`，导致一些提交“消失”了，别慌，可以使用 `git reflog` 找回。
+
+`git reflog` 会记录你所有的本地操作历史（包括 `reset`），即使这些提交在 `git log` 中已经看不到了。
+
+**找回步骤：**
+
+1. 使用 `git reflog` 查看操作历史，找到你“消失”的提交对应的 `commit_id`。
+2. 使用 `git reset --hard <commit_id>` 将 HEAD 指针重新指向那个提交，即可恢复。
