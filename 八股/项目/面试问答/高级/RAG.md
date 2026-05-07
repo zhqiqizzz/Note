@@ -446,21 +446,500 @@ Web Worker 分块
 
 ## 6. SSE 流式对话
 
-1. 为什么使用 SSE，而不是 WebSocket？
-2. SSE 和 WebSocket 的区别是什么？
-3. SSE 的请求和响应格式是什么？
-4. EventSource 只能发 GET 请求，如果需要 POST 参数怎么办？
-5. 你是用原生 EventSource，还是 fetch 读取 stream？
-6. 如何实现模型回复逐字显示？
-7. 如何处理中断生成？
-8. AbortController 在这里怎么用？
-9. 页面切换后仍然持续接收结果，你是怎么做到的？
-10. 如果用户连续发送多个问题，如何避免流式内容串台？
-11. SSE 断开后是否重连？
-12. 服务端返回 `[DONE]` 时，前端如何处理？
-13. 流式输出中 Markdown 没闭合时，如何渲染？
-14. 流式消息如何保存到历史会话？
-15. 如何处理网络中断、模型超时、接口报错？
+### 为什么使用 SSE
+
+可以这样答：
+
+> 因为 RAG 问答场景本质上是“客户端发起一次提问，服务端持续向客户端推送模型生成结果”。这个通信方向主要是服务端到客户端的单向流式返回，并不需要像在线聊天那样保持复杂的双向实时通信。所以 SSE 更轻量，协议更简单，也天然适合大模型逐 token 返回的场景。
+
+SSE 适合：
+
+```
+用户提问
+  ↓
+服务端调用大模型
+  ↓
+模型边生成边返回
+  ↓
+前端逐步展示回答
+```
+
+WebSocket 更适合：
+
+```
+在线聊天
+协同编辑
+多人游戏
+实时行情
+双向高频通信
+```
+
+面试可以补一句：
+
+> 如果是 B/C 端即时聊天，我会更倾向 WebSocket；但 RAG 问答的流式回答是典型的单向服务端推送，所以 SSE 更合适。
+
+#### 1. SSE 和 WebSocket 的区别
+
+可以从几个维度说：
+
+|对比点|SSE|WebSocket|
+|---|---|---|
+|通信方向|服务端到客户端单向推送|客户端和服务端双向通信|
+|协议|基于 HTTP|独立的 WebSocket 协议|
+|使用复杂度|简单|相对复杂|
+|自动重连|原生 EventSource 支持|需要自己实现|
+|数据格式|文本流，常用 `text/event-stream`|文本或二进制|
+|适合场景|大模型流式输出、通知、日志推送|IM、实时协作、游戏、行情|
+|请求方式|原生 EventSource 主要是 GET|握手后双向发送|
+|中断控制|fetch stream + AbortController 更灵活|主动 close 连接|
+
+面试回答：
+
+> SSE 是基于 HTTP 的单向服务端推送，浏览器原生 EventSource 支持自动重连，使用成本低；WebSocket 是全双工通信，适合客户端和服务端都需要高频发送消息的场景。我的 RAG 项目里，用户问题通过普通 HTTP 请求发送，模型回答由服务端持续返回，通信模式更符合 SSE，所以没有必要引入 WebSocket 的连接维护、心跳和重连复杂度。
+
+---
+
+# 3. SSE 的请求和响应格式是什么？
+
+## 请求
+
+如果用原生 `EventSource`：
+
+```
+const eventSource = new EventSource('/api/chat/stream?conversationId=1&question=xxx')
+```
+
+它本质是一个 GET 请求。
+
+## 响应头
+
+服务端一般返回：
+
+```
+Content-Type: text/event-streamCache-Control: no-cacheConnection: keep-alive
+```
+
+## 响应体格式
+
+SSE 是一段一段文本事件，每条消息以空行分隔：
+
+```
+data: 你好data: ，我是data: AI 助手data: [DONE]
+```
+
+也可以带事件名：
+
+```
+event: messagedata: {"content":"你好"}event: donedata: [DONE]
+```
+
+还可以带 id：
+
+```
+id: 123event: messagedata: {"content":"第一段"}
+```
+
+面试回答：
+
+> SSE 的响应类型是 `text/event-stream`。服务端会持续写入文本事件，每条事件通常由 `data:` 开头，以空行作为结束。前端收到每个 data 后，把内容追加到当前消息里。当收到 `[DONE]` 或 done 事件时，说明本次流式回答结束。
+
+---
+
+# 4. EventSource 只能发 GET 请求，如果需要 POST 参数怎么办？
+
+这是很容易被追问的点。
+
+原生 `EventSource` 的限制是：
+
+```
+只能 GET不能直接带 request body自定义 header 不方便AbortController 控制不灵活
+```
+
+解决方案有三种。
+
+## 方案一：参数放 query
+
+适合简单参数：
+
+```
+const url = `/api/chat/stream?conversationId=${id}&question=${encodeURIComponent(question)}`const es = new EventSource(url)
+```
+
+缺点：问题太长不适合放 URL，隐私和长度都有问题。
+
+## 方案二：先 POST 创建任务，再 EventSource 监听
+
+```
+POST /api/chat  ↓返回 taskId  ↓GET /api/chat/stream?taskId=xxx
+```
+
+优点：兼容 EventSource，又能传复杂参数。
+
+## 方案三：不用原生 EventSource，用 fetch 读取 stream
+
+```
+const response = await fetch('/api/chat/stream', {  method: 'POST',  headers: {    'Content-Type': 'application/json'  },  body: JSON.stringify({    conversationId,    question,    topK,    temperature  })})
+```
+
+然后用 `ReadableStream` 读取流。
+
+面试回答建议：
+
+> 如果参数很简单，可以放在 query 里；如果是复杂参数，比如问题内容、知识库 id、模型参数、检索配置，我更推荐用 `fetch` 发送 POST，然后读取 response body 的 stream。这样可以带 body、headers，也可以结合 AbortController 实现中断生成。
+
+---
+
+# 5. 你是用原生 EventSource，还是 fetch 读取 stream？
+
+你的项目可以这样回答会更稳：
+
+> 我更倾向使用 fetch 读取 stream，而不是原生 EventSource。因为问答请求通常需要 POST body，比如 question、conversationId、knowledgeBaseId、topK、temperature 等参数；同时我还需要用 AbortController 实现中断生成。原生 EventSource 对 POST 和中断控制不够灵活，所以我用 fetch + ReadableStream 来处理。
+
+示例：
+
+```
+const controller = new AbortController()const response = await fetch('/api/chat/stream', {  method: 'POST',  headers: {    'Content-Type': 'application/json'  },  body: JSON.stringify({    conversationId,    question  }),  signal: controller.signal})const reader = response.body!.getReader()const decoder = new TextDecoder('utf-8')while (true) {  const { done, value } = await reader.read()  if (done) break  const chunk = decoder.decode(value, { stream: true })  // 解析 chunk，追加到当前回答}
+```
+
+---
+
+# 6. 如何实现模型回复逐字显示？
+
+核心流程：
+
+```
+读取流  ↓解析服务端返回的 chunk  ↓拿到 content  ↓追加到当前 assistant 消息  ↓页面响应式更新
+```
+
+简单版：
+
+```
+message.content += delta
+```
+
+但真实项目不要每个 token 都直接更新 DOM，可以配合 buffer + rAF：
+
+```
+let buffer = ''let rafId: number | null = nullfunction appendDelta(delta: string) {  buffer += delta  if (rafId === null) {    rafId = requestAnimationFrame(() => {      currentMessage.content += buffer      buffer = ''      rafId = null    })  }}
+```
+
+面试回答：
+
+> 服务端每返回一段 delta，前端就把这段内容追加到当前 assistant 消息中。为了避免每个 token 都触发一次响应式更新，我会先把内容放到 buffer，再通过 requestAnimationFrame 合并一帧内的 token，批量更新消息内容，这样能减少页面抖动和渲染压力。
+
+---
+
+# 7. 如何处理中断生成？
+
+中断生成分两层：
+
+## 前端中断
+
+使用 `AbortController` 取消 fetch：
+
+```
+controller.abort()
+```
+
+## 服务端中断
+
+前端中断后，服务端应该停止继续调用模型或停止继续写流。
+
+前端状态要更新：
+
+```
+generating → aborted停止 loading保留已生成内容显示“已停止生成”
+```
+
+面试回答：
+
+> 中断生成时，我会调用 AbortController 的 `abort()` 取消当前 fetch 请求。前端会把当前消息状态从 generating 改成 aborted，并保留已经生成的内容。服务端也应该感知连接关闭，停止继续请求大模型或停止写入流，避免浪费模型调用资源。
+
+---
+
+# 8. AbortController 在这里怎么用？
+
+用法：
+
+```
+let controller: AbortController | null = nullasync function sendMessage(question: string) {  controller = new AbortController()  try {    const response = await fetch('/api/chat/stream', {      method: 'POST',      body: JSON.stringify({ question }),      signal: controller.signal    })    const reader = response.body!.getReader()    while (true) {      const { done, value } = await reader.read()      if (done) break      // 处理流式内容    }  } catch (err) {    if ((err as DOMException).name === 'AbortError') {      console.log('用户主动中断')      return    }    throw err  }}function stopGenerate() {  controller?.abort()}
+```
+
+面试回答：
+
+> AbortController 主要用来取消当前流式请求。发送消息时创建 controller，把 `controller.signal` 传给 fetch。用户点击停止生成时调用 `controller.abort()`，fetch 会抛出 AbortError，我会单独识别这个错误，不把它当成普通网络失败，而是更新为用户主动停止状态。
+
+---
+
+# 9. 页面切换后仍然持续接收结果，你是怎么做到的？
+
+关键点：**流式请求不能绑死在页面组件生命周期里。**
+
+如果把请求写在某个页面组件里：
+
+```
+页面卸载  ↓组件销毁  ↓请求状态丢失
+```
+
+更好的方式是放到全局 store / composable / service 里。
+
+```
+ChatStreamManagerPinia conversationStore全局 activeRequestMap
+```
+
+结构可以是：
+
+```
+const activeStreams = new Map<string, {  controller: AbortController  messageId: string  conversationId: string  status: 'generating' | 'done' | 'aborted' | 'error'}>()
+```
+
+面试回答：
+
+> 我不会把 SSE 请求只放在页面组件内部，而是抽到全局的流式任务管理模块，配合 Pinia 存储会话状态、消息列表和当前生成状态。页面组件只是订阅 store 数据。这样路由切换时，组件可以销毁，但请求和消息状态仍然存在于全局 store 里，流式内容继续写入对应 conversationId 和 messageId。用户切回页面时，可以继续看到最新内容。
+
+要补充边界：
+
+> 这种方式能解决 SPA 内部路由切换。如果用户刷新浏览器页面，前端内存里的 fetch 连接会断掉，这时需要服务端 taskId 和断点续传/重新拉取历史消息来恢复。
+
+---
+
+# 10. 如果用户连续发送多个问题，如何避免流式内容串台？
+
+核心：**每个请求绑定唯一 conversationId、messageId、requestId。**
+
+不要只维护一个全局 `currentAnswer`。
+
+错误做法：
+
+```
+currentAnswer += delta
+```
+
+正确做法：
+
+```
+messages[messageId].content += delta
+```
+
+可以设计：
+
+```
+{  requestId: 'req_001',  conversationId: 'conv_001',  userMessageId: 'msg_user_001',  assistantMessageId: 'msg_ai_001'}
+```
+
+每次收到 chunk 时：
+
+```
+appendToMessage({  conversationId,  messageId: assistantMessageId,  delta})
+```
+
+面试回答：
+
+> 我会给每次发送生成唯一 requestId 和 assistantMessageId，服务端返回的 chunk 也要能关联到这次请求。前端追加内容时，不写到一个全局 currentAnswer，而是根据 conversationId 和 messageId 精准更新对应消息。这样即使用户连续发送多个问题，或者多个会话同时生成，也不会把 A 问题的 token 追加到 B 问题里。
+
+也可以补充策略：
+
+> 产品上也可以限制同一会话同一时间只允许一个问题生成，新的问题要么排队，要么先中断上一个生成。
+
+---
+
+# 11. SSE 断开后是否重连？
+
+要分情况。
+
+## 原生 EventSource
+
+浏览器默认会自动重连。
+
+但要注意：
+
+```
+自动重连适合通知流不一定适合大模型回答因为可能导致重复 token 或上下文错乱
+```
+
+## fetch stream
+
+不会自动重连，需要自己实现。
+
+大模型流式回答断开后，重连比较复杂，因为要知道：
+
+```
+已经生成到哪里服务端是否还在生成是否支持 taskId是否支持从某个 offset 继续读取
+```
+
+面试回答：
+
+> 如果用原生 EventSource，它有自动重连能力；但在大模型流式回答场景里，我不会无脑自动重连，因为可能造成重复输出或内容不连续。如果是 fetch stream，就没有自动重连，需要自己处理。更稳妥的方案是服务端为每次生成维护 taskId，前端断线后可以根据 taskId 查询任务状态或拉取已生成内容。如果服务端不支持恢复，就提示生成中断，让用户重试。
+
+---
+
+# 12. 服务端返回 `[DONE]` 时，前端如何处理？
+
+`[DONE]` 表示本次流式输出完成。
+
+前端要做几件事：
+
+```
+停止读取流把消息状态改为 done清空 buffer关闭 reader取消 loading保存完整消息触发最终 Markdown 渲染更新历史会话
+```
+
+示例：
+
+```
+if (data === '[DONE]') {  flushBuffer()  updateMessage(messageId, {    status: 'done'  })  saveMessageToHistory(messageId)  break}
+```
+
+面试回答：
+
+> 收到 `[DONE]` 后，我会认为本次模型回复已经完成。前端会先 flush 掉剩余 buffer，然后把当前 assistant 消息状态改成 done，关闭 loading，清理 controller 和 activeStream 记录，并把完整内容写入历史会话。如果流式阶段 Markdown 是降频或半结构渲染，done 后会再做一次完整 marked 渲染，保证最终展示正确。
+
+---
+
+# 13. 流式输出中 Markdown 没闭合时，如何渲染？
+
+这是你前面问过的重点。
+
+流式 Markdown 常见问题：
+
+```
+代码块 ``` 没闭合表格还没输出完列表还在生成链接语法没闭合
+```
+
+不推荐每个 token 都：
+
+```
+html = marked.parse(fullText)
+```
+
+推荐：
+
+```
+稳定内容：marked 渲染正在输出的尾部：纯文本展示[DONE] 后：完整 marked 渲染
+```
+
+面试回答：
+
+> 流式过程中 Markdown 可能是不完整的，比如代码块还没闭合、表格还没生成完。如果每个 token 都全量 marked 解析，可能出现结构闪烁和性能问题。所以我会把内容分成稳定区和流式尾部，稳定区低频调用 marked 渲染，尾部先用纯文本展示。收到 `[DONE]` 后，再对完整内容做一次 marked 渲染。
+
+代码思路：
+
+```
+const { stable, tail } = splitStableMarkdown(rawText)renderedHtml.value = marked.parse(stable)streamingTail.value = tail
+```
+
+---
+
+# 14. 流式消息如何保存到历史会话？
+
+可以分两阶段保存。
+
+## 阶段一：生成中
+
+前端 store 实时维护：
+
+```
+{  id: 'msg_ai_001',  role: 'assistant',  content: '正在生成的内容...',  status: 'generating',  createdAt: Date.now()}
+```
+
+## 阶段二：生成完成
+
+收到 `[DONE]` 后保存完整内容：
+
+```
+conversationIdmessageIdrolecontentmetadata引用来源生成状态 donecreatedAtupdatedAt
+```
+
+面试回答：
+
+> 流式过程中，消息会先以 generating 状态存在 Pinia 的消息列表里，每次收到 delta 都追加到这条 assistant 消息。收到 `[DONE]` 后，把状态改成 done，并把完整内容保存到历史会话。如果中途失败或用户中断，也会保存当前已生成内容，但状态标记为 error 或 aborted，方便用户继续查看或重新生成。
+
+可以补充：
+
+> 如果需要更可靠，服务端也应该边生成边记录或者在结束时落库，避免前端刷新后丢失生成结果。
+
+---
+
+# 15. 如何处理网络中断、模型超时、接口报错？
+
+要区分不同错误类型。
+
+## 网络中断
+
+表现：
+
+```
+fetch 报错reader.read 失败连接突然断开
+```
+
+处理：
+
+```
+消息状态改为 error保留已生成内容提示网络中断允许重试 / 重新生成
+```
+
+## 用户主动中断
+
+`AbortError`
+
+处理：
+
+```
+状态改为 aborted不展示红色错误提示“已停止生成”
+```
+
+## 模型超时
+
+处理：
+
+```
+前端设置超时计时器服务端也设置模型调用超时超时后 abort提示模型响应超时
+```
+
+## 接口报错
+
+服务端可以返回 error event：
+
+```
+event: errordata: {"message":"模型调用失败"}
+```
+
+前端解析后：
+
+```
+状态改为 error展示错误原因允许重试
+```
+
+面试回答：
+
+> 我会把错误分成用户主动中断、网络异常、模型超时和服务端业务错误。用户主动中断对应 AbortError，不当成失败；网络中断和模型超时会把消息状态改成 error，但保留已生成内容；服务端如果返回 error event，就展示具体错误原因。所有异常都会清理 loading、controller 和 activeStream，避免页面一直处于生成中。
+
+---
+
+# 16. 一段完整的 fetch stream 示例
+
+面试时不用完整写，但你可以理解这个流程：
+
+```
+async function streamChat(params: {  conversationId: string  messageId: string  question: string}) {  const controller = new AbortController()  activeStreams.set(params.messageId, {    controller,    conversationId: params.conversationId  })  try {    const response = await fetch('/api/chat/stream', {      method: 'POST',      headers: {        'Content-Type': 'application/json'      },      body: JSON.stringify(params),      signal: controller.signal    })    if (!response.ok || !response.body) {      throw new Error('流式请求失败')    }    const reader = response.body.getReader()    const decoder = new TextDecoder('utf-8')    let buffer = ''    while (true) {      const { done, value } = await reader.read()      if (done) break      buffer += decoder.decode(value, { stream: true })      const lines = buffer.split('\n')      buffer = lines.pop() || ''      for (const line of lines) {        if (!line.startsWith('data:')) continue        const data = line.replace(/^data:\s*/, '')        if (data === '[DONE]') {          flushMessage(params.messageId)          markMessageDone(params.messageId)          activeStreams.delete(params.messageId)          return        }        const parsed = JSON.parse(data)        appendDelta(params.messageId, parsed.content)      }    }  } catch (err) {    if ((err as DOMException).name === 'AbortError') {      markMessageAborted(params.messageId)    } else {      markMessageError(params.messageId, err)    }  } finally {    activeStreams.delete(params.messageId)  }}
+```
+
+---
+
+# 17. 这组问题的完整面试回答
+
+你可以直接这样回答：
+
+> 我在 RAG 问答里选择 SSE，是因为这个场景主要是用户发送问题后，服务端持续向客户端推送模型生成内容，属于单向流式返回，不需要 WebSocket 那种全双工通信。WebSocket 更适合在线聊天、协同编辑这类双向实时场景，而 SSE 基于 HTTP，更轻量，也更符合大模型流式输出。
+> 
+> 原生 SSE 的响应类型是 `text/event-stream`，服务端通过 `data:` 持续返回内容，以空行分隔事件，最后返回 `[DONE]` 表示生成结束。不过原生 EventSource 只能发 GET，不方便传复杂参数和中断控制，所以我更倾向用 fetch 发 POST，然后通过 `ReadableStream` 读取服务端返回的流。这样可以带 question、conversationId、topK、temperature 等参数，也能用 AbortController 实现停止生成。
+> 
+> 前端收到每段 delta 后，不会每个 token 都直接更新 DOM，而是先放到 buffer 中，通过 requestAnimationFrame 合并一帧内的内容，再追加到当前 assistant 消息。消息状态和内容通过 Pinia 管理，每次请求都会绑定 conversationId、messageId 和 requestId，避免连续提问时内容串台。
+> 
+> 页面切换后仍然接收结果，是因为流式请求不绑定在页面组件内部，而是放在全局的 stream manager 或 Pinia action 里。页面只是订阅 store 数据，所以组件卸载后，请求仍然可以继续写入对应消息。
+> 
+> 收到 `[DONE]` 后，会 flush 剩余内容，把消息状态改为 done，清理 controller 和 activeStream，并保存完整历史消息。流式 Markdown 渲染时，我会避免每个 token 都全量 marked 解析，而是稳定内容低频渲染，未闭合的尾部先用纯文本展示，最后完成后再完整渲染一次。
+> 
+> 异常处理上，我会区分用户主动中断、网络中断、模型超时和服务端报错。AbortError 视为用户停止，不算失败；网络和模型错误会把消息状态标记为 error，保留已生成内容，并提供重试或重新生成入口。
 
 ## 7. marked Markdown 渲染
 
