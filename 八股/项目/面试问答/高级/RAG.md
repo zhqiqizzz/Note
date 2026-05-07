@@ -425,21 +425,27 @@ DOM 渲染
 用户交互响应
 ```
 
+因为分块通常是同步 CPU 计算。
+
 如果你在主线程里做大文本分块，比如几 MB 的文档解析后文本，要执行：
 
 ```
-正则切段落
+大字符串遍历
+正则匹配
+段落切分
 句子切分
-chunk 合并
-overlap 计算
+数组合并
+overlap 拼接
 metadata 生成
 ```
 
+如果文本很大，例如几 MB 到几十 MB，主线程会连续执行这些 JS 逻辑。在这段时间里，浏览器没法及时处理用户输入、滚动、点击和页面渲染。
+
 这些同步计算会占用主线程，导致页面无法及时响应。
 
-面试可以这样答：
+面试回答：
 
-> 我使用 Web Worker 是因为文档分块属于 CPU 密集型任务，尤其是大文档需要做递归切分、正则匹配和 chunk 合并，如果直接在主线程执行，会阻塞页面渲染和用户交互。Worker 可以在独立线程中处理这些计算，主线程只负责展示进度和接收结果，从而提升上传阶段的页面响应性。
+> JavaScript 在浏览器主线程上执行时是单线程的。如果我在主线程里对大文本做大量字符串切分、正则匹配和循环处理，这些同步任务会长时间占用主线程，导致渲染和交互被阻塞，表现为上传时页面卡顿、进度条不动、按钮点不动。Worker 可以把这部分计算放到后台线程，避免影响主线程。
 
 ### 二、Web Worker 和主线程之间通信
 
@@ -513,7 +519,7 @@ self.onmessage = (event) => {
 
 > Worker 和主线程之间通过消息通信。主线程用 `worker.postMessage()` 把文本和参数传给 Worker，Worker 通过 `self.onmessage` 接收任务，处理完成后再用 `self.postMessage()` 把进度、结果或错误返回给主线程。
 
-### 三、Worker 能不能直接操作 DOM？
+### 三、Worker 能不能直接操作 DOM
 
 **不能。**
 
@@ -542,103 +548,86 @@ hash 计算
 
 > Worker 不能直接操作 DOM，因为 DOM 属于主线程环境。Worker 只能做计算任务，计算完成后把结果传回主线程，由主线程更新 Vue 状态和页面视图。
 
-# 4. 大文本分块为什么会阻塞主线程？
-
-因为分块通常是同步 CPU 计算。
-
-比如大文档会涉及：
-
-```
-大字符串遍历正则匹配段落切分句子切分数组合并overlap 拼接metadata 生成
-```
-
-如果文本很大，例如几 MB 到几十 MB，主线程会连续执行这些 JS 逻辑。在这段时间里，浏览器没法及时处理用户输入、滚动、点击和页面渲染。
-
-面试回答：
-
-> JavaScript 在浏览器主线程上执行时是单线程的。如果我在主线程里对大文本做大量字符串切分、正则匹配和循环处理，这些同步任务会长时间占用主线程，导致渲染和交互被阻塞，表现为上传时页面卡顿、进度条不动、按钮点不动。Worker 可以把这部分计算放到后台线程，避免影响主线程。
-
----
-
-# 5. 你是怎么把文件内容传给 Worker 的？
+### 四、文件内容传给 Worker
 
 有两种方式。
-
-## 方式一：主线程先读取文本，再传给 Worker
+#### 1. 主线程先读取文本，再传给 Worker
 
 适合 TXT、Markdown、PDF 已经解析出文本后的场景。
 
-```
-const text = await file.text()worker.postMessage({  type: 'start',  payload: {    text,    fileName: file.name,    documentId,    maxChunkSize: 800,    overlap: 100  }})
-```
-
-## 方式二：直接把 File / ArrayBuffer 传给 Worker
-
-适合 Worker 内部负责读取和处理文件。
-
-```
-const buffer = await file.arrayBuffer()worker.postMessage(  {    type: 'start',    payload: {      buffer,      fileName: file.name    }  },  [buffer])
-```
-
-面试回答建议：
-
-> 在我的项目里，文件解析后会得到纯文本内容，然后把文本、documentId、fileName、分块大小、overlap 等参数通过 `postMessage` 传给 Worker。Worker 只负责分块计算，完成后返回 chunks 和 metadata。如果是更大的文件，也可以传 ArrayBuffer，并结合 Transferable Objects 减少拷贝成本。
-
----
-
-# 6. postMessage 传大对象会不会有性能问题？
-
-**会。**
-
-`postMessage` 默认会使用结构化克隆算法复制数据。如果传的是很大的字符串、大数组、复杂对象，会产生序列化和拷贝成本。
-
-可能的问题：
-
-```
-传输耗时内存占用增加大对象复制导致短暂卡顿Worker 返回大量 chunks 也会有开销
+```js
+const text = await file.text()
+worker.postMessage({
+	type: 'start',
+	payload: {
+		text,
+		fileName: file.name,
+		documentId,
+		maxChunkSize: 800,
+		overlap: 100
+	}
+})
 ```
 
-面试回答：
+#### 2. 直接把 File / ArrayBuffer 传给 Worker
 
-> 会有性能问题。`postMessage` 不是零成本的，默认会对数据做 structured clone。如果传输的是大文本、大数组或者很多 chunk 对象，会带来复制和内存开销。所以我会尽量控制传输数据结构，比如只传必要字段，处理进度只传数字，最终结果按批返回。如果传的是 ArrayBuffer，可以使用 Transferable Objects，把所有权转移给 Worker，避免复制。
+##### structured clone
 
----
-
-# 7. structured clone 是什么？
-
-structured clone，中文通常叫 **结构化克隆算法**。
+中文通常叫 **结构化克隆算法**。
 
 它是浏览器在 `postMessage`、IndexedDB、History API 等场景中复制复杂 JS 数据的一种机制。
 
 它可以复制：
 
 ```
-ObjectArrayMapSetDateBlobFileArrayBufferTypedArray
+Object
+Array
+Map
+Set
+Date
+Blob
+File
+ArrayBuffer
+TypedArray
 ```
 
 但不能复制：
 
 ```
-FunctionDOM 节点部分带原型方法的复杂对象
+Function
+DOM 节点
+部分带原型方法的复杂对象
 ```
 
-面试回答：
+structured clone 是浏览器用于跨线程传递数据的克隆算法。主线程通过 postMessage 传对象给 Worker 时，浏览器会把这个对象结构化复制一份给 Worker。它支持普通对象、数组、Map、Set、Blob、ArrayBuffer 等，但不支持函数和 DOM 节点。缺点是大对象复制会有性能和内存成本。
 
-> structured clone 是浏览器用于跨线程传递数据的克隆算法。主线程通过 postMessage 传对象给 Worker 时，浏览器会把这个对象结构化复制一份给 Worker。它支持普通对象、数组、Map、Set、Blob、ArrayBuffer 等，但不支持函数和 DOM 节点。缺点是大对象复制会有性能和内存成本。
+##### postMessage
 
----
+`postMessage` 默认会使用 **结构化克隆算法** 复制数据。如果传的是很大的字符串、大数组、复杂对象，会产生序列化和拷贝成本。
 
-# 8. 是否用到了 Transferable Objects？
+可能的问题：
 
-你可以根据实际情况回答。比较稳妥的说法是：
+```
+传输耗时
+内存占用增加
+大对象复制
+导致短暂卡顿
+Worker 返回大量 chunks 也会有开销
+```
 
-> 如果传的是普通文本字符串，我主要依赖 structured clone；如果传的是大文件的 ArrayBuffer，会优先使用 Transferable Objects。
+`postMessage` 不是零成本的，默认会对数据做 structured clone。如果传输的是大文本、大数组或者很多 chunk 对象，会带来复制和内存开销。所以需要尽量控制传输数据结构，比如只传必要字段，处理进度只传数字，最终结果按批返回。
+
+如果传的是 ArrayBuffer，可以使用 Transferable Objects，把所有权转移给 Worker，避免复制。
+
+##### ArrayBuffer + Transferable Objects
+
+[ArrayBuffer + Transferable Objects](../../RAG个人知识库/ArrayBuffer%20+%20Transferable%20Objects.md)
 
 Transferable Objects 的作用是：**转移所有权，而不是复制。**
 
 普通传递：
 
-```
+```js
 worker.postMessage({ buffer })
 ```
 
@@ -646,53 +635,90 @@ worker.postMessage({ buffer })
 
 转移传递：
 
-```
+> [buffer] 多这个参数
+
+```js
 worker.postMessage(  { buffer },  [buffer])
 ```
 
 这样 `buffer` 的所有权转移给 Worker，主线程里的 `buffer.byteLength` 会变成不可再正常使用的状态。
 
+适合 Worker 内部负责读取和处理文件。
+
+```js
+const buffer = await file.arrayBuffer()
+worker.postMessage(
+	{
+		type: 'start',
+		payload: {
+			buffer,
+			fileName: file.name
+		}
+	},
+	[buffer]
+)
+```
+
 面试回答：
 
 > Transferable Objects 适合传 ArrayBuffer、MessagePort、ImageBitmap 这类对象。它不是复制数据，而是把数据所有权从主线程转移到 Worker，所以能减少大文件传输时的复制开销。我的项目中文本分块主要传字符串，所以不是强依赖 Transferable；但如果把文件读取为 ArrayBuffer 再交给 Worker 处理，我会使用 Transferable Objects 优化性能。
 
----
 
-# 9. Worker 执行出错如何捕获？
+### 五、Worker 执行出错捕获
 
 主线程和 Worker 内部都要处理。
 
-## Worker 内部 try/catch
+#### 1. Worker 内部 try/catch
 
-```
-self.onmessage = (event) => {  try {    const chunks = splitText(event.data.payload.text)    self.postMessage({      type: 'done',      payload: { chunks }    })  } catch (err) {    self.postMessage({      type: 'error',      payload: {        message: err instanceof Error ? err.message : 'Worker 执行失败'      }    })  }}
+```js
+self.onmessage = (event) => {
+	try {
+		const chunks = splitText(event.data.payload.text)
+		self.postMessage({
+			type: 'done',
+			payload: { chunks }
+		})
+	} catch (err) {
+		self.postMessage({
+			type: 'error',
+			payload: {
+				message: err instanceof Error ? err.message : 'Worker 执行失败'
+			}
+		})
+	}
+}
 ```
 
-## 主线程监听 error
+#### 2. 主线程监听 error
 
-```
-worker.onerror = (event) => {  console.error('Worker error:', event.message)  status.value = 'failed'  errorMessage.value = event.message}
+```js
+worker.onerror = (event) => {
+	console.error('Worker error:', event.message)
+	status.value = 'failed'
+	errorMessage.value = event.message
+}
 ```
 
-## 主线程监听 messageerror
+#### 3. 主线程监听 messageerror
 
-```
-worker.onmessageerror = () => {  status.value = 'failed'  errorMessage.value = 'Worker 消息反序列化失败'}
+```js
+worker.onmessageerror = () => {
+	status.value = 'failed'
+	errorMessage.value = 'Worker 消息反序列化失败'
+}
 ```
 
 面试回答：
 
 > Worker 内部会用 try/catch 捕获业务错误，并通过 `postMessage({ type: 'error' })` 返回给主线程。主线程也会监听 `worker.onerror` 和 `worker.onmessageerror`，分别处理 Worker 运行时错误和消息反序列化错误。这样可以把文档状态更新为 failed，并展示失败原因和重试入口。
 
----
-
-# 10. 用户取消上传时，Worker 如何终止？
+### 六、Worker 如何终止
 
 两种方式。
 
-## 方式一：直接 terminate
+#### 1. 直接 terminate
 
-```
+```js
 worker.terminate()
 ```
 
@@ -700,18 +726,34 @@ worker.terminate()
 
 适合用户取消任务、页面卸载、任务失败不需要继续处理。
 
-## 方式二：发送 cancel 消息，让 Worker 自己停止
+#### 2. 发送 cancel 消息，让 Worker 自己停止
 
 主线程：
 
-```
+```js
 worker.postMessage({  type: 'cancel',  payload: { taskId }})
 ```
 
 Worker：
 
-```
-let cancelled = falseself.onmessage = (event) => {  if (event.data.type === 'cancel') {    cancelled = true    return  }  if (event.data.type === 'start') {    const chunks = []    for (const part of splitParts(event.data.payload.text)) {      if (cancelled) {        self.postMessage({ type: 'cancelled' })        return      }      chunks.push(processPart(part))    }    self.postMessage({ type: 'done', payload: { chunks } })  }}
+```js
+let cancelled = falseself.onmessage = (event) => {
+	if (event.data.type === 'cancel') {
+		cancelled = true
+		return
+	}
+	if (event.data.type === 'start') {
+		const chunks = []
+		for (const part of splitParts(event.data.payload.text)) {
+			if (cancelled) {
+				self.postMessage({ type: 'cancelled' })
+				return
+			}
+			chunks.push(processPart(part))
+		}
+		self.postMessage({ type: 'done', payload: { chunks } })
+	}
+}
 ```
 
 面试回答：
@@ -722,15 +764,13 @@ let cancelled = falseself.onmessage = (event) => {  if (event.data.type === 'can
 
 > `terminate()` 是强制终止，Worker 没机会做善后逻辑；发送 cancel 消息更优雅，但需要分块算法本身支持可中断。
 
----
+### 七、多个文件同时分块
 
-# 11. 多个文件同时分块时，是一个 Worker 还是多个 Worker？
-
-不要简单说“多个更快”。更好的回答是：**使用 Worker 池或并发控制。**
+更好的回答是：**使用 Worker 池或并发控制。**
 
 几种方案：
 
-## 一个 Worker 串行处理
+#### 1. 一个 Worker 串行处理
 
 优点：
 
@@ -744,7 +784,7 @@ let cancelled = falseself.onmessage = (event) => {  if (event.data.type === 'can
 多个文件排队，处理慢
 ```
 
-## 每个文件一个 Worker
+#### 2. 每个文件一个 Worker
 
 优点：
 
@@ -755,15 +795,20 @@ let cancelled = falseself.onmessage = (event) => {  if (event.data.type === 'can
 缺点：
 
 ```
-文件多时线程过多CPU 抢占严重内存占用高移动端可能卡
+文件多时线程过多
+CPU 抢占严重
+内存占用高
+移动端可能卡
 ```
 
-## Worker Pool
+#### 3. Worker Pool
 
 推荐：
 
 ```
-固定创建 2~4 个 Worker任务队列调度根据设备性能控制并发
+固定创建 2~4 个 Worker
+任务队列调度
+根据设备性能控制并发
 ```
 
 面试回答：
@@ -774,68 +819,91 @@ let cancelled = falseself.onmessage = (event) => {  if (event.data.type === 'can
 
 > 如果只是个人知识库项目，初版可以一个 Worker 串行处理，降低复杂度；如果后续支持批量上传大文件，再扩展为 Worker 池。
 
----
+### 八、Worker 文件在 Vite / Nuxt 中引入
 
-# 12. Worker 文件在 Vite / Nuxt 中怎么引入？
-
-## Vite / Vue3 中
+#### 1. Vite / Vue3 中
 
 常用写法：
 
-```
-const worker = new Worker(  new URL('./chunk.worker.ts', import.meta.url),  { type: 'module' })
+```js
+const worker = new Worker(
+	new URL('./chunk.worker.ts', import.meta.url),
+	{ type: 'module' }
+)
 ```
 
 Vite 会识别 `new URL(..., import.meta.url)` 并参与打包。
 
 也可以：
 
-```
-import ChunkWorker from './chunk.worker?worker'const worker = new ChunkWorker()
+```js
+import ChunkWorker from './chunk.worker?worker'
+const worker = new ChunkWorker()
 ```
 
-## Nuxt 中
+#### 2. Nuxt 中
 
 Nuxt 基于 Vite 时也可以用类似方式，但要注意只在客户端创建 Worker。
 
-```
-if (process.client) {  const worker = new Worker(    new URL('@/workers/chunk.worker.ts', import.meta.url),    { type: 'module' }  )}
+```js
+if (process.client) {
+	const worker = new Worker(
+		new URL('@/workers/chunk.worker.ts', import.meta.url),
+		{ type: 'module' }
+	)
+}
 ```
 
 或者在组合式函数中：
 
-```
-export function useChunkWorker() {  let worker: Worker | null = null  const createWorker = () => {    if (!import.meta.client) return    worker = new Worker(      new URL('../workers/chunk.worker.ts', import.meta.url),      { type: 'module' }    )  }  return {    createWorker  }}
+```js
+export function useChunkWorker() {
+	let worker: Worker | null = null
+	const createWorker = () => {
+		if (!import.meta.client) return
+		worker = new Worker(
+			new URL('../workers/chunk.worker.ts', import.meta.url),
+			{ type: 'module' }
+		)
+	}
+	return {  createWorker  }
+}
 ```
 
 面试回答：
 
 > 在 Vite 项目中，我会通过 `new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })` 引入 Worker。Nuxt 里要注意 SSR 环境没有 window 和 Worker，所以 Worker 的创建必须放在客户端判断里，比如 `process.client` 或 `import.meta.client`，避免服务端渲染时报错。
 
----
-
-# 13. Web Worker 会增加打包复杂度吗？
+### 九、Web Worker 的打包复杂度
 
 会有一些，但可控。
 
 可能增加的复杂度：
 
 ```
-Worker 单独打包成 chunk路径处理要注意SSR 环境不能直接创建 WorkerTypeScript 类型配置Worker 中不能使用 DOM API部分依赖不适合在 Worker 中运行调试比普通 JS 麻烦
+Worker 单独打包成 chunk
+路径处理要注意
+SSR 环境不能直接创建 Worker
+TypeScript 类型配置
+Worker 中不能使用 DOM API
+部分依赖不适合在 Worker 中运行
+调试比普通 JS 麻烦
 ```
 
 面试回答：
 
 > 会增加一定复杂度。Worker 通常会被打成独立文件，需要注意路径、模块格式和浏览器兼容。Nuxt 里还要注意 SSR，不能在服务端创建 Worker。另外 Worker 里不能访问 DOM，也不是所有依赖都适合放到 Worker 中运行。不过对于大文本分块这种 CPU 密集型任务，性能收益大于这部分工程复杂度。
 
----
-
-# 14. 移动端浏览器对 Worker 支持如何？
+### 十、移动端浏览器对 Worker 支持
 
 现代移动端浏览器基本支持 Web Worker，但仍要考虑：
 
 ```
-低端机 CPU 弱内存限制更明显后台标签页可能被节流Worker 创建过多会有压力老旧 WebView 兼容性可能差
+低端机 CPU 弱
+内存限制更明显
+后台标签页可能被节流
+Worker 创建过多会有压力
+老旧 WebView 兼容性可能差
 ```
 
 面试回答：
@@ -844,96 +912,92 @@ Worker 单独打包成 chunk路径处理要注意SSR 环境不能直接创建 Wo
 
 特性检测：
 
-```
+```js
 const supportWorker = typeof Worker !== 'undefined'
 ```
 
----
-
-# 15. 如果不用 Worker，还有什么优化方案？
+### 十一、不用 Worker的优化方案
 
 可以从“降低单次任务耗时”和“拆分任务”两个方向答。
 
-## 方案一：分片 / 分批处理
+#### 1. 分片 / 分批处理
 
 把大任务拆成小任务，让出主线程。
 
-```
-async function processInBatches(parts: string[]) {  const result = []  for (const part of parts) {    result.push(processPart(part))    await new Promise(resolve => setTimeout(resolve, 0))  }  return result}
+```js
+async function processInBatches(parts: string[]) {
+	const result = []  for (const part of parts) {
+		result.push(processPart(part))
+		await new Promise(resolve => setTimeout(resolve, 0))
+	}
+	return result
+}
 ```
 
 这样可以避免一次性长时间阻塞。
 
----
-
-## 方案二：requestIdleCallback
+#### 2. requestIdleCallback
 
 在浏览器空闲时处理。
 
-```
-requestIdleCallback((deadline) => {  while (deadline.timeRemaining() > 0 && tasks.length) {    processTask(tasks.shift())  }})
+```js
+requestIdleCallback((deadline) => {
+	while (deadline.timeRemaining() > 0 && tasks.length) {
+		processTask(tasks.shift())
+	}
+})
 ```
 
 缺点：兼容性和时机不稳定，不适合强实时任务。
 
----
-
-## 方案三：服务端异步处理
+#### 3. 服务端异步处理
 
 大文档解析、分块、embedding 都交给服务端任务队列。
 
 ```
-前端上传文件  ↓服务端创建任务  ↓后端异步解析 / 分块 / 向量化  ↓前端轮询或 SSE 获取进度
+前端上传文件
+  ↓
+服务端创建任务
+  ↓
+后端异步解析 / 分块 / 向量化
+  ↓
+前端轮询或 SSE 获取进度
 ```
 
 这是生产系统更常见的方案。
 
----
-
-## 方案四：限制文件大小和数量
+#### 4. 限制文件大小和数量
 
 ```
-限制单文件大小限制一次上传数量限制文本长度超大文档提示拆分
+限制单文件大小
+限制一次上传数量
+限制文本长度
+超大文档提示拆分
 ```
 
----
-
-## 方案五：算法优化
+#### 5. 算法优化
 
 ```
-减少复杂正则减少重复字符串拼接使用数组 join避免深拷贝避免生成过多临时对象
+减少复杂正则
+减少重复字符串拼接
+使用数组 join
+避免深拷贝
+避免生成过多临时对象
 ```
 
 面试回答：
 
 > 如果不用 Worker，可以通过分批处理、setTimeout 分片让出主线程、requestIdleCallback 空闲调度、限制文件大小、优化分块算法来缓解阻塞。但这些方案本质上还是在主线程执行，只是把阻塞拆小。对于更大的文档，最好还是放到 Worker 或服务端异步任务中处理。
 
----
-
-# 16. 这组问题的完整面试回答版本
-
-你可以直接背这个版本：
-
-> 我在 RAG 项目里使用 Web Worker，主要是为了解决大文本分块阻塞主线程的问题。文档解析后可能得到很长的文本，分块时需要做段落切分、句子切分、固定长度兜底切分、overlap 计算和 metadata 生成，这些都是同步计算。如果放在主线程执行，会影响页面渲染、进度条更新和用户点击操作。
-> 
-> Worker 和主线程之间通过 `postMessage` 通信。主线程把文本、documentId、fileName、maxChunkSize、overlap 等参数传给 Worker，Worker 处理后通过 `postMessage` 返回进度、chunks 或错误信息。Worker 不能直接操作 DOM，所以它只负责计算，最终 UI 更新仍然由主线程完成。
-> 
-> 传大对象时需要注意性能，因为 `postMessage` 默认使用 structured clone，会产生复制成本。如果传的是 ArrayBuffer，可以使用 Transferable Objects 转移所有权，减少复制开销。我的分块场景主要传文本字符串，如果后续把文件读取和解析也放到 Worker，则可以用 ArrayBuffer + Transferable 优化。
-> 
-> 错误处理上，Worker 内部会用 try/catch 捕获业务错误并返回 error 消息，主线程也会监听 `worker.onerror` 和 `worker.onmessageerror`。用户取消任务时，如果 Worker 是任务专用的，可以直接 `terminate()`；如果是复用 Worker，则发送 cancel 消息，让 Worker 在循环中检查取消标记。
-> 
-> 多文件场景下，不建议给每个文件无限创建 Worker，更合理的是做任务队列或 Worker Pool，比如 2 到 4 个 Worker 控制并发。Vite 中可以通过 `new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })` 引入；Nuxt 中要注意 SSR，只能在客户端创建 Worker。
-> 
-> 如果不用 Worker，也可以通过分批处理、setTimeout 让出主线程、requestIdleCallback、限制文件大小或服务端异步处理来优化，但这些方案要么只是缓解阻塞，要么依赖服务端。对于前端侧的大文本分块，Worker 是比较合适的方案。
-
----
-
-# 17. 面试官最可能继续追问的点
-
-你重点准备这几个：
-
 ```
-1. Worker 不能操作 DOM，只能做计算。2. Worker 通信用 postMessage / onmessage。3. postMessage 大对象会有 structured clone 成本。4. Transferable Objects 是转移所有权，不是复制。5. terminate 是强制终止，cancel 消息是优雅取消。6. 多文件不能无限 Worker，要做并发控制。7. Nuxt 中创建 Worker 要放在客户端环境。8. 不用 Worker 可以分批处理，但本质仍在主线程。
+1. Worker 不能操作 DOM，只能做计算。
+2. Worker 通信用 postMessage / onmessage。
+3. postMessage 大对象会有 structured clone 成本。
+4. Transferable Objects 是转移所有权，不是复制。
+5. terminate 是强制终止，cancel 消息是优雅取消。
+6. 多文件不能无限 Worker，要做并发控制。
+7. Nuxt 中创建 Worker 要放在客户端环境。
+8. 不用 Worker 可以分批处理，但本质仍在主线程。
 ```
 
 最关键的一句话：
