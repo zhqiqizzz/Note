@@ -410,21 +410,535 @@ Web Worker 分块
 
 ## 4. Web Worker
 
-1. 为什么要用 Web Worker？
-2. Web Worker 和主线程之间如何通信？
-3. Worker 能不能直接操作 DOM？
-4. 大文本分块为什么会阻塞主线程？
-5. 你是怎么把文件内容传给 Worker 的？
-6. postMessage 传大对象会不会有性能问题？
-7. structured clone 是什么？
-8. 是否用到了 Transferable Objects？
-9. Worker 执行出错如何捕获？
-10. 用户取消上传时，Worker 如何终止？
-11. 多个文件同时分块时，是一个 Worker 还是多个 Worker？
-12. Worker 文件在 Vite/Nuxt 中怎么引入？
-13. Web Worker 会增加打包复杂度吗？
-14. 移动端浏览器对 Worker 支持如何？
-15. 如果不用 Worker，还有什么优化方案？
+### 一、为什么要用 Web Worker？
+
+核心原因：**把耗时计算从主线程挪出去，避免页面卡顿。**
+
+浏览器主线程要负责很多事情：
+
+```
+JS 执行
+DOM 渲染
+样式计算
+布局 layout
+绘制 paint
+用户交互响应
+```
+
+如果你在主线程里做大文本分块，比如几 MB 的文档解析后文本，要执行：
+
+```
+正则切段落
+句子切分
+chunk 合并
+overlap 计算
+metadata 生成
+```
+
+这些同步计算会占用主线程，导致页面无法及时响应。
+
+面试可以这样答：
+
+> 我使用 Web Worker 是因为文档分块属于 CPU 密集型任务，尤其是大文档需要做递归切分、正则匹配和 chunk 合并，如果直接在主线程执行，会阻塞页面渲染和用户交互。Worker 可以在独立线程中处理这些计算，主线程只负责展示进度和接收结果，从而提升上传阶段的页面响应性。
+
+### 二、Web Worker 和主线程之间通信
+
+通过 `postMessage` 和 `onmessage` 通信。
+
+主线程：
+
+```js
+const worker = new Worker(
+	new URL('./chunk.worker.ts', import.meta.url),
+	{ type: 'module' }
+)
+
+worker.postMessage({
+	type: 'start',
+	payload: {
+		text,
+		maxChunkSize: 800,
+		overlap: 100
+	}
+})
+
+worker.onmessage = (event) => {
+	const { type, payload } = event.data
+	if (type === 'progress') {
+		progress.value = payload.progress
+	}
+	if (type === 'done') {
+		chunks.value = payload.chunks
+	}
+	if (type === 'error') {
+		errorMessage.value = payload.message
+	}
+}
+```
+
+Worker 线程：
+
+```js
+self.onmessage = (event) => {
+	const { type, payload } = event.data
+	if (type === 'start') {
+		try {
+			const chunks = splitText(payload.text, {
+				maxChunkSize: payload.maxChunkSize,
+				overlap: payload.overlap,
+				onProgress(progress) {
+					self.postMessage({
+						type: 'progress',
+						payload: { progress }
+					})
+				}
+			})
+			self.postMessage({
+				type: 'done',
+				payload: { chunks }
+			})
+		} catch (err) {
+			self.postMessage({
+				type: 'error',
+				payload: {
+					message: err instanceof Error ? err.message : '分块失败'
+				}
+			})
+		}
+	}
+}
+```
+
+面试回答：
+
+> Worker 和主线程之间通过消息通信。主线程用 `worker.postMessage()` 把文本和参数传给 Worker，Worker 通过 `self.onmessage` 接收任务，处理完成后再用 `self.postMessage()` 把进度、结果或错误返回给主线程。
+
+### 三、Worker 能不能直接操作 DOM？
+
+**不能。**
+
+Worker 运行在独立线程，没有访问 DOM 的能力。
+
+它不能做：
+
+```js
+document.querySelector('.box')
+window.alert('hello')
+localStorage.setItem('a', '1')
+```
+
+它适合做：
+
+```
+文本处理
+复杂计算
+数据格式转换
+压缩 / 解压
+hash 计算
+图片像素处理
+```
+
+面试回答：
+
+> Worker 不能直接操作 DOM，因为 DOM 属于主线程环境。Worker 只能做计算任务，计算完成后把结果传回主线程，由主线程更新 Vue 状态和页面视图。
+
+# 4. 大文本分块为什么会阻塞主线程？
+
+因为分块通常是同步 CPU 计算。
+
+比如大文档会涉及：
+
+```
+大字符串遍历正则匹配段落切分句子切分数组合并overlap 拼接metadata 生成
+```
+
+如果文本很大，例如几 MB 到几十 MB，主线程会连续执行这些 JS 逻辑。在这段时间里，浏览器没法及时处理用户输入、滚动、点击和页面渲染。
+
+面试回答：
+
+> JavaScript 在浏览器主线程上执行时是单线程的。如果我在主线程里对大文本做大量字符串切分、正则匹配和循环处理，这些同步任务会长时间占用主线程，导致渲染和交互被阻塞，表现为上传时页面卡顿、进度条不动、按钮点不动。Worker 可以把这部分计算放到后台线程，避免影响主线程。
+
+---
+
+# 5. 你是怎么把文件内容传给 Worker 的？
+
+有两种方式。
+
+## 方式一：主线程先读取文本，再传给 Worker
+
+适合 TXT、Markdown、PDF 已经解析出文本后的场景。
+
+```
+const text = await file.text()worker.postMessage({  type: 'start',  payload: {    text,    fileName: file.name,    documentId,    maxChunkSize: 800,    overlap: 100  }})
+```
+
+## 方式二：直接把 File / ArrayBuffer 传给 Worker
+
+适合 Worker 内部负责读取和处理文件。
+
+```
+const buffer = await file.arrayBuffer()worker.postMessage(  {    type: 'start',    payload: {      buffer,      fileName: file.name    }  },  [buffer])
+```
+
+面试回答建议：
+
+> 在我的项目里，文件解析后会得到纯文本内容，然后把文本、documentId、fileName、分块大小、overlap 等参数通过 `postMessage` 传给 Worker。Worker 只负责分块计算，完成后返回 chunks 和 metadata。如果是更大的文件，也可以传 ArrayBuffer，并结合 Transferable Objects 减少拷贝成本。
+
+---
+
+# 6. postMessage 传大对象会不会有性能问题？
+
+**会。**
+
+`postMessage` 默认会使用结构化克隆算法复制数据。如果传的是很大的字符串、大数组、复杂对象，会产生序列化和拷贝成本。
+
+可能的问题：
+
+```
+传输耗时内存占用增加大对象复制导致短暂卡顿Worker 返回大量 chunks 也会有开销
+```
+
+面试回答：
+
+> 会有性能问题。`postMessage` 不是零成本的，默认会对数据做 structured clone。如果传输的是大文本、大数组或者很多 chunk 对象，会带来复制和内存开销。所以我会尽量控制传输数据结构，比如只传必要字段，处理进度只传数字，最终结果按批返回。如果传的是 ArrayBuffer，可以使用 Transferable Objects，把所有权转移给 Worker，避免复制。
+
+---
+
+# 7. structured clone 是什么？
+
+structured clone，中文通常叫 **结构化克隆算法**。
+
+它是浏览器在 `postMessage`、IndexedDB、History API 等场景中复制复杂 JS 数据的一种机制。
+
+它可以复制：
+
+```
+ObjectArrayMapSetDateBlobFileArrayBufferTypedArray
+```
+
+但不能复制：
+
+```
+FunctionDOM 节点部分带原型方法的复杂对象
+```
+
+面试回答：
+
+> structured clone 是浏览器用于跨线程传递数据的克隆算法。主线程通过 postMessage 传对象给 Worker 时，浏览器会把这个对象结构化复制一份给 Worker。它支持普通对象、数组、Map、Set、Blob、ArrayBuffer 等，但不支持函数和 DOM 节点。缺点是大对象复制会有性能和内存成本。
+
+---
+
+# 8. 是否用到了 Transferable Objects？
+
+你可以根据实际情况回答。比较稳妥的说法是：
+
+> 如果传的是普通文本字符串，我主要依赖 structured clone；如果传的是大文件的 ArrayBuffer，会优先使用 Transferable Objects。
+
+Transferable Objects 的作用是：**转移所有权，而不是复制。**
+
+普通传递：
+
+```
+worker.postMessage({ buffer })
+```
+
+会复制。
+
+转移传递：
+
+```
+worker.postMessage(  { buffer },  [buffer])
+```
+
+这样 `buffer` 的所有权转移给 Worker，主线程里的 `buffer.byteLength` 会变成不可再正常使用的状态。
+
+面试回答：
+
+> Transferable Objects 适合传 ArrayBuffer、MessagePort、ImageBitmap 这类对象。它不是复制数据，而是把数据所有权从主线程转移到 Worker，所以能减少大文件传输时的复制开销。我的项目中文本分块主要传字符串，所以不是强依赖 Transferable；但如果把文件读取为 ArrayBuffer 再交给 Worker 处理，我会使用 Transferable Objects 优化性能。
+
+---
+
+# 9. Worker 执行出错如何捕获？
+
+主线程和 Worker 内部都要处理。
+
+## Worker 内部 try/catch
+
+```
+self.onmessage = (event) => {  try {    const chunks = splitText(event.data.payload.text)    self.postMessage({      type: 'done',      payload: { chunks }    })  } catch (err) {    self.postMessage({      type: 'error',      payload: {        message: err instanceof Error ? err.message : 'Worker 执行失败'      }    })  }}
+```
+
+## 主线程监听 error
+
+```
+worker.onerror = (event) => {  console.error('Worker error:', event.message)  status.value = 'failed'  errorMessage.value = event.message}
+```
+
+## 主线程监听 messageerror
+
+```
+worker.onmessageerror = () => {  status.value = 'failed'  errorMessage.value = 'Worker 消息反序列化失败'}
+```
+
+面试回答：
+
+> Worker 内部会用 try/catch 捕获业务错误，并通过 `postMessage({ type: 'error' })` 返回给主线程。主线程也会监听 `worker.onerror` 和 `worker.onmessageerror`，分别处理 Worker 运行时错误和消息反序列化错误。这样可以把文档状态更新为 failed，并展示失败原因和重试入口。
+
+---
+
+# 10. 用户取消上传时，Worker 如何终止？
+
+两种方式。
+
+## 方式一：直接 terminate
+
+```
+worker.terminate()
+```
+
+这会立即终止 Worker。
+
+适合用户取消任务、页面卸载、任务失败不需要继续处理。
+
+## 方式二：发送 cancel 消息，让 Worker 自己停止
+
+主线程：
+
+```
+worker.postMessage({  type: 'cancel',  payload: { taskId }})
+```
+
+Worker：
+
+```
+let cancelled = falseself.onmessage = (event) => {  if (event.data.type === 'cancel') {    cancelled = true    return  }  if (event.data.type === 'start') {    const chunks = []    for (const part of splitParts(event.data.payload.text)) {      if (cancelled) {        self.postMessage({ type: 'cancelled' })        return      }      chunks.push(processPart(part))    }    self.postMessage({ type: 'done', payload: { chunks } })  }}
+```
+
+面试回答：
+
+> 用户取消时，如果这个 Worker 是当前任务专用的，我会直接调用 `worker.terminate()` 终止线程，并把文档状态改成 cancelled。如果是复用型 Worker，或者需要做资源清理，可以发送 cancel 消息，让 Worker 在循环中检查 cancelled 标记，主动停止当前任务。
+
+注意补一句：
+
+> `terminate()` 是强制终止，Worker 没机会做善后逻辑；发送 cancel 消息更优雅，但需要分块算法本身支持可中断。
+
+---
+
+# 11. 多个文件同时分块时，是一个 Worker 还是多个 Worker？
+
+不要简单说“多个更快”。更好的回答是：**使用 Worker 池或并发控制。**
+
+几种方案：
+
+## 一个 Worker 串行处理
+
+优点：
+
+```
+实现简单内存占用小不会创建太多线程
+```
+
+缺点：
+
+```
+多个文件排队，处理慢
+```
+
+## 每个文件一个 Worker
+
+优点：
+
+```
+并行能力强任务隔离
+```
+
+缺点：
+
+```
+文件多时线程过多CPU 抢占严重内存占用高移动端可能卡
+```
+
+## Worker Pool
+
+推荐：
+
+```
+固定创建 2~4 个 Worker任务队列调度根据设备性能控制并发
+```
+
+面试回答：
+
+> 多文件场景下我不会无限制地给每个文件都创建 Worker。比较合理的是做 Worker Pool，比如固定 2 到 4 个 Worker，通过任务队列调度分块任务。这样既能并行处理，又不会因为 Worker 太多导致 CPU 和内存压力过大。移动端可以进一步降低并发，比如只开 1 到 2 个 Worker。
+
+可以说得更贴合项目：
+
+> 如果只是个人知识库项目，初版可以一个 Worker 串行处理，降低复杂度；如果后续支持批量上传大文件，再扩展为 Worker 池。
+
+---
+
+# 12. Worker 文件在 Vite / Nuxt 中怎么引入？
+
+## Vite / Vue3 中
+
+常用写法：
+
+```
+const worker = new Worker(  new URL('./chunk.worker.ts', import.meta.url),  { type: 'module' })
+```
+
+Vite 会识别 `new URL(..., import.meta.url)` 并参与打包。
+
+也可以：
+
+```
+import ChunkWorker from './chunk.worker?worker'const worker = new ChunkWorker()
+```
+
+## Nuxt 中
+
+Nuxt 基于 Vite 时也可以用类似方式，但要注意只在客户端创建 Worker。
+
+```
+if (process.client) {  const worker = new Worker(    new URL('@/workers/chunk.worker.ts', import.meta.url),    { type: 'module' }  )}
+```
+
+或者在组合式函数中：
+
+```
+export function useChunkWorker() {  let worker: Worker | null = null  const createWorker = () => {    if (!import.meta.client) return    worker = new Worker(      new URL('../workers/chunk.worker.ts', import.meta.url),      { type: 'module' }    )  }  return {    createWorker  }}
+```
+
+面试回答：
+
+> 在 Vite 项目中，我会通过 `new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })` 引入 Worker。Nuxt 里要注意 SSR 环境没有 window 和 Worker，所以 Worker 的创建必须放在客户端判断里，比如 `process.client` 或 `import.meta.client`，避免服务端渲染时报错。
+
+---
+
+# 13. Web Worker 会增加打包复杂度吗？
+
+会有一些，但可控。
+
+可能增加的复杂度：
+
+```
+Worker 单独打包成 chunk路径处理要注意SSR 环境不能直接创建 WorkerTypeScript 类型配置Worker 中不能使用 DOM API部分依赖不适合在 Worker 中运行调试比普通 JS 麻烦
+```
+
+面试回答：
+
+> 会增加一定复杂度。Worker 通常会被打成独立文件，需要注意路径、模块格式和浏览器兼容。Nuxt 里还要注意 SSR，不能在服务端创建 Worker。另外 Worker 里不能访问 DOM，也不是所有依赖都适合放到 Worker 中运行。不过对于大文本分块这种 CPU 密集型任务，性能收益大于这部分工程复杂度。
+
+---
+
+# 14. 移动端浏览器对 Worker 支持如何？
+
+现代移动端浏览器基本支持 Web Worker，但仍要考虑：
+
+```
+低端机 CPU 弱内存限制更明显后台标签页可能被节流Worker 创建过多会有压力老旧 WebView 兼容性可能差
+```
+
+面试回答：
+
+> 现代移动端浏览器基本支持 Web Worker，但在低端机和部分老旧 WebView 上仍然要谨慎。移动端 CPU 和内存更有限，所以不能无限创建 Worker，也不能一次性传输过大的数据。实际项目中我会做特性检测，如果不支持 Worker，就降级到主线程分批处理，同时限制文件大小。
+
+特性检测：
+
+```
+const supportWorker = typeof Worker !== 'undefined'
+```
+
+---
+
+# 15. 如果不用 Worker，还有什么优化方案？
+
+可以从“降低单次任务耗时”和“拆分任务”两个方向答。
+
+## 方案一：分片 / 分批处理
+
+把大任务拆成小任务，让出主线程。
+
+```
+async function processInBatches(parts: string[]) {  const result = []  for (const part of parts) {    result.push(processPart(part))    await new Promise(resolve => setTimeout(resolve, 0))  }  return result}
+```
+
+这样可以避免一次性长时间阻塞。
+
+---
+
+## 方案二：requestIdleCallback
+
+在浏览器空闲时处理。
+
+```
+requestIdleCallback((deadline) => {  while (deadline.timeRemaining() > 0 && tasks.length) {    processTask(tasks.shift())  }})
+```
+
+缺点：兼容性和时机不稳定，不适合强实时任务。
+
+---
+
+## 方案三：服务端异步处理
+
+大文档解析、分块、embedding 都交给服务端任务队列。
+
+```
+前端上传文件  ↓服务端创建任务  ↓后端异步解析 / 分块 / 向量化  ↓前端轮询或 SSE 获取进度
+```
+
+这是生产系统更常见的方案。
+
+---
+
+## 方案四：限制文件大小和数量
+
+```
+限制单文件大小限制一次上传数量限制文本长度超大文档提示拆分
+```
+
+---
+
+## 方案五：算法优化
+
+```
+减少复杂正则减少重复字符串拼接使用数组 join避免深拷贝避免生成过多临时对象
+```
+
+面试回答：
+
+> 如果不用 Worker，可以通过分批处理、setTimeout 分片让出主线程、requestIdleCallback 空闲调度、限制文件大小、优化分块算法来缓解阻塞。但这些方案本质上还是在主线程执行，只是把阻塞拆小。对于更大的文档，最好还是放到 Worker 或服务端异步任务中处理。
+
+---
+
+# 16. 这组问题的完整面试回答版本
+
+你可以直接背这个版本：
+
+> 我在 RAG 项目里使用 Web Worker，主要是为了解决大文本分块阻塞主线程的问题。文档解析后可能得到很长的文本，分块时需要做段落切分、句子切分、固定长度兜底切分、overlap 计算和 metadata 生成，这些都是同步计算。如果放在主线程执行，会影响页面渲染、进度条更新和用户点击操作。
+> 
+> Worker 和主线程之间通过 `postMessage` 通信。主线程把文本、documentId、fileName、maxChunkSize、overlap 等参数传给 Worker，Worker 处理后通过 `postMessage` 返回进度、chunks 或错误信息。Worker 不能直接操作 DOM，所以它只负责计算，最终 UI 更新仍然由主线程完成。
+> 
+> 传大对象时需要注意性能，因为 `postMessage` 默认使用 structured clone，会产生复制成本。如果传的是 ArrayBuffer，可以使用 Transferable Objects 转移所有权，减少复制开销。我的分块场景主要传文本字符串，如果后续把文件读取和解析也放到 Worker，则可以用 ArrayBuffer + Transferable 优化。
+> 
+> 错误处理上，Worker 内部会用 try/catch 捕获业务错误并返回 error 消息，主线程也会监听 `worker.onerror` 和 `worker.onmessageerror`。用户取消任务时，如果 Worker 是任务专用的，可以直接 `terminate()`；如果是复用 Worker，则发送 cancel 消息，让 Worker 在循环中检查取消标记。
+> 
+> 多文件场景下，不建议给每个文件无限创建 Worker，更合理的是做任务队列或 Worker Pool，比如 2 到 4 个 Worker 控制并发。Vite 中可以通过 `new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })` 引入；Nuxt 中要注意 SSR，只能在客户端创建 Worker。
+> 
+> 如果不用 Worker，也可以通过分批处理、setTimeout 让出主线程、requestIdleCallback、限制文件大小或服务端异步处理来优化，但这些方案要么只是缓解阻塞，要么依赖服务端。对于前端侧的大文本分块，Worker 是比较合适的方案。
+
+---
+
+# 17. 面试官最可能继续追问的点
+
+你重点准备这几个：
+
+```
+1. Worker 不能操作 DOM，只能做计算。2. Worker 通信用 postMessage / onmessage。3. postMessage 大对象会有 structured clone 成本。4. Transferable Objects 是转移所有权，不是复制。5. terminate 是强制终止，cancel 消息是优雅取消。6. 多文件不能无限 Worker，要做并发控制。7. Nuxt 中创建 Worker 要放在客户端环境。8. 不用 Worker 可以分批处理，但本质仍在主线程。
+```
+
+最关键的一句话：
+
+> Worker 不是让任务变少，而是把耗时计算从主线程移走，让页面渲染和用户交互不被阻塞。
 
 ## 5. 向量化与语义检索
 
@@ -446,7 +960,7 @@ Web Worker 分块
 
 ## 6. SSE 流式对话
 
-### 为什么使用 SSE
+### 一、为什么使用 SSE
 
 可以这样答：
 
@@ -497,200 +1011,270 @@ WebSocket 更适合：
 
 > SSE 是基于 HTTP 的单向服务端推送，浏览器原生 EventSource 支持自动重连，使用成本低；WebSocket 是全双工通信，适合客户端和服务端都需要高频发送消息的场景。我的 RAG 项目里，用户问题通过普通 HTTP 请求发送，模型回答由服务端持续返回，通信模式更符合 SSE，所以没有必要引入 WebSocket 的连接维护、心跳和重连复杂度。
 
----
+#### 2. SSE 的请求和响应格式
 
-# 3. SSE 的请求和响应格式是什么？
-
-## 请求
+##### 请求
 
 如果用原生 `EventSource`：
 
-```
+```js
 const eventSource = new EventSource('/api/chat/stream?conversationId=1&question=xxx')
 ```
 
 它本质是一个 GET 请求。
-
-## 响应头
+##### 响应头
 
 服务端一般返回：
 
 ```
-Content-Type: text/event-streamCache-Control: no-cacheConnection: keep-alive
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
 ```
-
-## 响应体格式
+##### 响应体格式
 
 SSE 是一段一段文本事件，每条消息以空行分隔：
 
 ```
-data: 你好data: ，我是data: AI 助手data: [DONE]
+data: 你好
+data: ，我是
+data: AI 助手
+data: [DONE]
 ```
 
 也可以带事件名：
 
 ```
-event: messagedata: {"content":"你好"}event: donedata: [DONE]
+event: message
+data: {"content":"你好"}
+
+event: done
+data: [DONE]
 ```
 
 还可以带 id：
 
 ```
-id: 123event: messagedata: {"content":"第一段"}
+id: 123
+event: message
+data: {"content":"第一段"}
 ```
 
 面试回答：
 
 > SSE 的响应类型是 `text/event-stream`。服务端会持续写入文本事件，每条事件通常由 `data:` 开头，以空行作为结束。前端收到每个 data 后，把内容追加到当前消息里。当收到 `[DONE]` 或 done 事件时，说明本次流式回答结束。
 
----
-
-# 4. EventSource 只能发 GET 请求，如果需要 POST 参数怎么办？
+#### 3. EventSource 
 
 这是很容易被追问的点。
 
 原生 `EventSource` 的限制是：
 
 ```
-只能 GET不能直接带 request body自定义 header 不方便AbortController 控制不灵活
+只能 GET
+不能直接带 request body
+自定义 header 不方便
+AbortController 控制不灵活
 ```
 
-解决方案有三种。
+解决方案
+#### 4. fetch + ReadableStream
 
-## 方案一：参数放 query
-
-适合简单参数：
-
-```
-const url = `/api/chat/stream?conversationId=${id}&question=${encodeURIComponent(question)}`const es = new EventSource(url)
-```
-
-缺点：问题太长不适合放 URL，隐私和长度都有问题。
-
-## 方案二：先 POST 创建任务，再 EventSource 监听
-
-```
-POST /api/chat  ↓返回 taskId  ↓GET /api/chat/stream?taskId=xxx
-```
-
-优点：兼容 EventSource，又能传复杂参数。
-
-## 方案三：不用原生 EventSource，用 fetch 读取 stream
-
-```
-const response = await fetch('/api/chat/stream', {  method: 'POST',  headers: {    'Content-Type': 'application/json'  },  body: JSON.stringify({    conversationId,    question,    topK,    temperature  })})
+```js
+const response = await fetch('/api/chat/stream', {
+  method: 'POST',  
+  headers: {
+      'Content-Type': 'application/json'  
+  },
+  body: JSON.stringify({
+      conversationId,
+      question,
+      topK,
+      temperature
+  })
+})
 ```
 
 然后用 `ReadableStream` 读取流。
+
+示例：
+
+```JS
+const controller = new AbortController()
+const response = await fetch('/api/chat/stream',
+{
+	method: 'POST',
+	headers: {
+		'Content-Type': 'application/json'  
+	},
+	body: JSON.stringify({
+		conversationId,
+		question
+	}),
+	signal: controller.signal
+})
+
+const reader = response.body!.getReader()
+const decoder = new TextDecoder('utf-8')
+
+while (true) {
+	const { done, value } = await reader.read()
+	
+	if (done) break
+	
+	const chunk = decoder.decode(value, { stream: true })  
+	
+	// 解析 chunk，追加到当前回答}
+}
+```
 
 面试回答建议：
 
 > 如果参数很简单，可以放在 query 里；如果是复杂参数，比如问题内容、知识库 id、模型参数、检索配置，我更推荐用 `fetch` 发送 POST，然后读取 response body 的 stream。这样可以带 body、headers，也可以结合 AbortController 实现中断生成。
 
----
-
-# 5. 你是用原生 EventSource，还是 fetch 读取 stream？
-
-你的项目可以这样回答会更稳：
-
-> 我更倾向使用 fetch 读取 stream，而不是原生 EventSource。因为问答请求通常需要 POST body，比如 question、conversationId、knowledgeBaseId、topK、temperature 等参数；同时我还需要用 AbortController 实现中断生成。原生 EventSource 对 POST 和中断控制不够灵活，所以我用 fetch + ReadableStream 来处理。
-
-示例：
-
-```
-const controller = new AbortController()const response = await fetch('/api/chat/stream', {  method: 'POST',  headers: {    'Content-Type': 'application/json'  },  body: JSON.stringify({    conversationId,    question  }),  signal: controller.signal})const reader = response.body!.getReader()const decoder = new TextDecoder('utf-8')while (true) {  const { done, value } = await reader.read()  if (done) break  const chunk = decoder.decode(value, { stream: true })  // 解析 chunk，追加到当前回答}
-```
-
----
-
-# 6. 如何实现模型回复逐字显示？
+### 二、实现模型回复逐字显示
 
 核心流程：
 
 ```
-读取流  ↓解析服务端返回的 chunk  ↓拿到 content  ↓追加到当前 assistant 消息  ↓页面响应式更新
+读取流
+  ↓
+解析服务端返回的 chunk
+  ↓
+拿到 content
+  ↓
+追加到当前 assistant 消息
+  ↓
+页面响应式更新
 ```
 
 简单版：
 
-```
+```js
 message.content += delta
 ```
 
 但真实项目不要每个 token 都直接更新 DOM，可以配合 buffer + rAF：
 
-```
-let buffer = ''let rafId: number | null = nullfunction appendDelta(delta: string) {  buffer += delta  if (rafId === null) {    rafId = requestAnimationFrame(() => {      currentMessage.content += buffer      buffer = ''      rafId = null    })  }}
+```js
+let buffer = ''
+let rafId: number | null = null
+
+function appendDelta(delta: string) {
+	buffer += delta 
+	
+	if (rafId === null) {
+		rafId = requestAnimationFrame(() => {
+			currentMessage.content += buffer
+			buffer = ''
+			rafId = null
+		})
+	}
+}
 ```
 
 面试回答：
 
 > 服务端每返回一段 delta，前端就把这段内容追加到当前 assistant 消息中。为了避免每个 token 都触发一次响应式更新，我会先把内容放到 buffer，再通过 requestAnimationFrame 合并一帧内的 token，批量更新消息内容，这样能减少页面抖动和渲染压力。
 
----
-
-# 7. 如何处理中断生成？
+### 三、处理中断生成
 
 中断生成分两层：
 
-## 前端中断
+#### 1. 前端中断
 
 使用 `AbortController` 取消 fetch：
 
-```
+```js
 controller.abort()
 ```
 
-## 服务端中断
-
-前端中断后，服务端应该停止继续调用模型或停止继续写流。
-
-前端状态要更新：
-
-```
-generating → aborted停止 loading保留已生成内容显示“已停止生成”
-```
-
-面试回答：
-
-> 中断生成时，我会调用 AbortController 的 `abort()` 取消当前 fetch 请求。前端会把当前消息状态从 generating 改成 aborted，并保留已经生成的内容。服务端也应该感知连接关闭，停止继续请求大模型或停止写入流，避免浪费模型调用资源。
-
----
-
-# 8. AbortController 在这里怎么用？
+AbortController 在这里怎么用
 
 用法：
 
-```
-let controller: AbortController | null = nullasync function sendMessage(question: string) {  controller = new AbortController()  try {    const response = await fetch('/api/chat/stream', {      method: 'POST',      body: JSON.stringify({ question }),      signal: controller.signal    })    const reader = response.body!.getReader()    while (true) {      const { done, value } = await reader.read()      if (done) break      // 处理流式内容    }  } catch (err) {    if ((err as DOMException).name === 'AbortError') {      console.log('用户主动中断')      return    }    throw err  }}function stopGenerate() {  controller?.abort()}
+```js
+let controller: AbortController | null = null
+
+async function sendMessage(question: string) {
+	controller = new AbortController()
+	try {
+		const response = await fetch('/api/chat/stream', {
+			method: 'POST',
+			body: JSON.stringify({ question }),
+			signal: controller.signal
+		})
+		const reader = response.body!.getReader()
+		while (true) {
+			const { done, value } = await reader.read()
+			if (done) break
+			
+			// 处理流式内容
+		}
+	} catch (err) {
+		if ((err as DOMException).name === 'AbortError') {
+			console.log('用户主动中断')
+			return
+		}
+		throw err
+	}
+}
+
+function stopGenerate() {  controller?.abort()}
 ```
 
 面试回答：
 
 > AbortController 主要用来取消当前流式请求。发送消息时创建 controller，把 `controller.signal` 传给 fetch。用户点击停止生成时调用 `controller.abort()`，fetch 会抛出 AbortError，我会单独识别这个错误，不把它当成普通网络失败，而是更新为用户主动停止状态。
 
----
+#### 2. 服务端中断
 
-# 9. 页面切换后仍然持续接收结果，你是怎么做到的？
+前端中断后，服务端应该停止继续调用模型或停止继续写流。
+
+前端状态要更新：
+
+```
+generating → aborted
+停止 loading
+保留已生成内容
+显示“已停止生成”
+```
+
+面试回答：
+
+> 中断生成时，我会调用 AbortController 的 `abort()` 取消当前 fetch 请求。前端会把当前消息状态从 generating 改成 aborted，并保留已经生成的内容。服务端也应该感知连接关闭，停止继续请求大模型或停止写入流，避免浪费模型调用资源。
+
+### 四、页面切换后仍然持续接收结果
 
 关键点：**流式请求不能绑死在页面组件生命周期里。**
 
 如果把请求写在某个页面组件里：
 
 ```
-页面卸载  ↓组件销毁  ↓请求状态丢失
+页面卸载
+  ↓
+组件销毁
+  ↓
+请求状态丢失
 ```
 
 更好的方式是放到全局 store / composable / service 里。
 
 ```
-ChatStreamManagerPinia conversationStore全局 activeRequestMap
+ChatStreamManager
+Pinia conversationStore
+全局 activeRequestMap
 ```
 
 结构可以是：
 
-```
-const activeStreams = new Map<string, {  controller: AbortController  messageId: string  conversationId: string  status: 'generating' | 'done' | 'aborted' | 'error'}>()
+```js
+const activeStreams = new Map<string, {
+	controller: AbortController
+	messageId: string
+	conversationId: string
+	status: 'generating' | 'done' | 'aborted' | 'error'
+}>()
 ```
 
 面试回答：
@@ -701,9 +1285,7 @@ const activeStreams = new Map<string, {  controller: AbortController  messageId:
 
 > 这种方式能解决 SPA 内部路由切换。如果用户刷新浏览器页面，前端内存里的 fetch 连接会断掉，这时需要服务端 taskId 和断点续传/重新拉取历史消息来恢复。
 
----
-
-# 10. 如果用户连续发送多个问题，如何避免流式内容串台？
+### 五、如何避免流式内容串台
 
 核心：**每个请求绑定唯一 conversationId、messageId、requestId。**
 
@@ -711,26 +1293,35 @@ const activeStreams = new Map<string, {  controller: AbortController  messageId:
 
 错误做法：
 
-```
+```js
 currentAnswer += delta
 ```
 
 正确做法：
 
-```
+```js
 messages[messageId].content += delta
 ```
 
 可以设计：
 
-```
-{  requestId: 'req_001',  conversationId: 'conv_001',  userMessageId: 'msg_user_001',  assistantMessageId: 'msg_ai_001'}
+```js
+{
+	requestId: 'req_001',
+	conversationId: 'conv_001',
+	userMessageId: 'msg_user_001',
+	assistantMessageId: 'msg_ai_001'
+}
 ```
 
 每次收到 chunk 时：
 
-```
-appendToMessage({  conversationId,  messageId: assistantMessageId,  delta})
+```js
+appendToMessage({
+	conversationId,
+	messageId: assistantMessageId,
+	delta
+})
 ```
 
 面试回答：
@@ -741,80 +1332,98 @@ appendToMessage({  conversationId,  messageId: assistantMessageId,  delta})
 
 > 产品上也可以限制同一会话同一时间只允许一个问题生成，新的问题要么排队，要么先中断上一个生成。
 
----
-
-# 11. SSE 断开后是否重连？
+### 六、SSE 断开后重连
 
 要分情况。
 
-## 原生 EventSource
+#### 1. 原生 EventSource
 
 浏览器默认会自动重连。
 
 但要注意：
 
 ```
-自动重连适合通知流不一定适合大模型回答因为可能导致重复 token 或上下文错乱
+自动重连适合通知流
+不一定适合大模型回答
+因为可能导致重复 token 或上下文错乱
 ```
 
-## fetch stream
+#### 2. fetch stream
 
 不会自动重连，需要自己实现。
 
 大模型流式回答断开后，重连比较复杂，因为要知道：
 
 ```
-已经生成到哪里服务端是否还在生成是否支持 taskId是否支持从某个 offset 继续读取
+已经生成到哪里
+服务端是否还在生成
+是否支持 taskId
+是否支持从某个 offset 继续读取
 ```
 
 面试回答：
 
 > 如果用原生 EventSource，它有自动重连能力；但在大模型流式回答场景里，我不会无脑自动重连，因为可能造成重复输出或内容不连续。如果是 fetch stream，就没有自动重连，需要自己处理。更稳妥的方案是服务端为每次生成维护 taskId，前端断线后可以根据 taskId 查询任务状态或拉取已生成内容。如果服务端不支持恢复，就提示生成中断，让用户重试。
 
----
-
-# 12. 服务端返回 `[DONE]` 时，前端如何处理？
+### 七、服务端返回 `[DONE]` 
 
 `[DONE]` 表示本次流式输出完成。
 
 前端要做几件事：
 
 ```
-停止读取流把消息状态改为 done清空 buffer关闭 reader取消 loading保存完整消息触发最终 Markdown 渲染更新历史会话
+停止读取流
+把消息状态改为 done
+清空 buffer
+关闭 reader
+取消 loading
+保存完整消息
+触发最终 Markdown 渲染
+更新历史会话
 ```
 
 示例：
 
-```
-if (data === '[DONE]') {  flushBuffer()  updateMessage(messageId, {    status: 'done'  })  saveMessageToHistory(messageId)  break}
+```js
+if (data === '[DONE]') {
+	flushBuffer()
+	updateMessage(messageId, {
+		status: 'done'
+	})
+	saveMessageToHistory(messageId)
+	break
+}
 ```
 
 面试回答：
 
 > 收到 `[DONE]` 后，我会认为本次模型回复已经完成。前端会先 flush 掉剩余 buffer，然后把当前 assistant 消息状态改成 done，关闭 loading，清理 controller 和 activeStream 记录，并把完整内容写入历史会话。如果流式阶段 Markdown 是降频或半结构渲染，done 后会再做一次完整 marked 渲染，保证最终展示正确。
 
----
-
-# 13. 流式输出中 Markdown 没闭合时，如何渲染？
+### 八、流式输出中 Markdown 没闭合如何渲染
 
 这是你前面问过的重点。
 
 流式 Markdown 常见问题：
 
 ```
-代码块 ``` 没闭合表格还没输出完列表还在生成链接语法没闭合
+代码块 ``` 没闭合
+表格还没输出完
+列表还在生成
+链接语法没闭合
 ```
 
 不推荐每个 token 都：
 
-```
+```js
 html = marked.parse(fullText)
 ```
 
 推荐：
 
 ```
-稳定内容：marked 渲染正在输出的尾部：纯文本展示[DONE] 后：完整 marked 渲染
+稳定内容：marked 渲染
+正在输出的尾部：纯文本
+展示[DONE] 后：完整 marked 渲染
 ```
 
 面试回答：
@@ -823,30 +1432,43 @@ html = marked.parse(fullText)
 
 代码思路：
 
-```
-const { stable, tail } = splitStableMarkdown(rawText)renderedHtml.value = marked.parse(stable)streamingTail.value = tail
+```js
+const { stable, tail } = splitStableMarkdown(rawText)
+renderedHtml.value = marked.parse(stable)
+streamingTail.value = tail
 ```
 
----
-
-# 14. 流式消息如何保存到历史会话？
+### 九、流式消息保存到历史会话
 
 可以分两阶段保存。
-
-## 阶段一：生成中
+#### 1. 阶段一：生成中
 
 前端 store 实时维护：
 
-```
-{  id: 'msg_ai_001',  role: 'assistant',  content: '正在生成的内容...',  status: 'generating',  createdAt: Date.now()}
+```js
+{
+	id: 'msg_ai_001',
+	role: 'assistant',
+	content: '正在生成的内容...',
+	status: 'generating',
+	createdAt: Date.now()
+}
 ```
 
-## 阶段二：生成完成
+#### 2. 阶段二：生成完成
 
 收到 `[DONE]` 后保存完整内容：
 
 ```
-conversationIdmessageIdrolecontentmetadata引用来源生成状态 donecreatedAtupdatedAt
+conversationId
+messageId
+role
+content
+metadata
+引用来源
+生成状态 done
+createdAt
+updatedAt
 ```
 
 面试回答：
@@ -857,77 +1479,142 @@ conversationIdmessageIdrolecontentmetadata引用来源生成状态 donecreatedAt
 
 > 如果需要更可靠，服务端也应该边生成边记录或者在结束时落库，避免前端刷新后丢失生成结果。
 
----
-
-# 15. 如何处理网络中断、模型超时、接口报错？
+### 十、处理网络中断、模型超时、接口报错
 
 要区分不同错误类型。
-
-## 网络中断
+#### 1. 网络中断
 
 表现：
 
 ```
-fetch 报错reader.read 失败连接突然断开
+fetch 报错
+reader.read
+失败连接
+突然断开
 ```
 
 处理：
 
 ```
-消息状态改为 error保留已生成内容提示网络中断允许重试 / 重新生成
+消息状态改为 error
+保留已生成内容
+提示网络中断
+允许重试 / 重新生成
 ```
-
-## 用户主动中断
+#### 2. 用户主动中断
 
 `AbortError`
 
 处理：
 
 ```
-状态改为 aborted不展示红色错误提示“已停止生成”
+状态改为 aborted
+不展示红色错误
+提示“已停止生成”
 ```
-
-## 模型超时
+#### 3. 模型超时
 
 处理：
 
 ```
-前端设置超时计时器服务端也设置模型调用超时超时后 abort提示模型响应超时
+前端设置超时计时器
+服务端也设置模型
+调用超时超时后 abort
+提示模型响应超时
 ```
-
-## 接口报错
+#### 4. 接口报错
 
 服务端可以返回 error event：
 
-```
+```js
 event: errordata: {"message":"模型调用失败"}
 ```
 
 前端解析后：
 
 ```
-状态改为 error展示错误原因允许重试
+状态改为 error
+展示错误原因
+允许重试
 ```
 
 面试回答：
 
 > 我会把错误分成用户主动中断、网络异常、模型超时和服务端业务错误。用户主动中断对应 AbortError，不当成失败；网络中断和模型超时会把消息状态改成 error，但保留已生成内容；服务端如果返回 error event，就展示具体错误原因。所有异常都会清理 loading、controller 和 activeStream，避免页面一直处于生成中。
 
----
+### 一段完整的 fetch stream 示例
 
-# 16. 一段完整的 fetch stream 示例
+可以理解这个流程：
 
-面试时不用完整写，但你可以理解这个流程：
-
+```js
+async function streamChat(params: {
+	conversationId: string
+	messageId: string
+	question: string
+}) {
+	const controller = new AbortController()
+	
+	activeStreams.set(params.messageId, {
+		controller,
+		conversationId: params.conversationId
+	})
+	
+	try {
+		const response = await fetch('/api/chat/stream', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(params),
+			signal: controller.signal
+		})
+		
+		if (!response.ok || !response.body) {
+			throw new Error('流式请求失败')
+		}
+		
+		const reader = response.body.getReader()
+		const decoder = new TextDecoder('utf-8')
+		
+		let buffer = ''
+		
+		while (true) {
+			const { done, value } = await reader.read()
+			
+			if (done) break
+			
+			buffer += decoder.decode(value, { stream: true })
+			
+			const lines = buffer.split('\n')
+			buffer = lines.pop() || ''
+			
+			for (const line of lines) {
+				if (!line.startsWith('data:')) continue
+				
+				const data = line.replace(/^data:\s*/, '')
+				
+				if (data === '[DONE]') {
+					flushMessage(params.messageId)
+					markMessageDone(params.messageId)
+					activeStreams.delete(params.messageId)
+					return
+				}
+				
+				const parsed = JSON.parse(data)
+				appendDelta(params.messageId, parsed.content)
+			}
+		}
+	} catch (err) {
+		if ((err as DOMException).name === 'AbortError') {
+			markMessageAborted(params.messageId)
+		} else {
+			markMessageError(params.messageId, err)
+		}
+	} finally {
+		activeStreams.delete(params.messageId)
+	}
+}
 ```
-async function streamChat(params: {  conversationId: string  messageId: string  question: string}) {  const controller = new AbortController()  activeStreams.set(params.messageId, {    controller,    conversationId: params.conversationId  })  try {    const response = await fetch('/api/chat/stream', {      method: 'POST',      headers: {        'Content-Type': 'application/json'      },      body: JSON.stringify(params),      signal: controller.signal    })    if (!response.ok || !response.body) {      throw new Error('流式请求失败')    }    const reader = response.body.getReader()    const decoder = new TextDecoder('utf-8')    let buffer = ''    while (true) {      const { done, value } = await reader.read()      if (done) break      buffer += decoder.decode(value, { stream: true })      const lines = buffer.split('\n')      buffer = lines.pop() || ''      for (const line of lines) {        if (!line.startsWith('data:')) continue        const data = line.replace(/^data:\s*/, '')        if (data === '[DONE]') {          flushMessage(params.messageId)          markMessageDone(params.messageId)          activeStreams.delete(params.messageId)          return        }        const parsed = JSON.parse(data)        appendDelta(params.messageId, parsed.content)      }    }  } catch (err) {    if ((err as DOMException).name === 'AbortError') {      markMessageAborted(params.messageId)    } else {      markMessageError(params.messageId, err)    }  } finally {    activeStreams.delete(params.messageId)  }}
-```
-
----
-
-# 17. 这组问题的完整面试回答
-
-你可以直接这样回答：
 
 > 我在 RAG 问答里选择 SSE，是因为这个场景主要是用户发送问题后，服务端持续向客户端推送模型生成内容，属于单向流式返回，不需要 WebSocket 那种全双工通信。WebSocket 更适合在线聊天、协同编辑这类双向实时场景，而 SSE 基于 HTTP，更轻量，也更符合大模型流式输出。
 > 
