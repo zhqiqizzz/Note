@@ -293,3 +293,302 @@ wrapper.eq("room_id", 1)
 Page<Message> messages = messageMapper.selectPage(page, wrapper);
 // 关联查询用户信息需要额外处理
 ```
+
+## 请求流动
+
+```
+Request
+  ↓
+Middleware
+  ↓
+Guard
+  ↓
+Interceptor before
+  ↓
+Pipe
+  ↓
+Controller
+  ↓
+Service
+  ↓
+Database
+  ↓
+Interceptor after
+  ↓
+Exception Filter
+  ↓
+Response
+```
+
+后面做登录鉴权时会用到这些。
+
+### Guard
+
+Guard 主要做 **权限判断**。
+
+比如以后你会有接口：
+
+```
+GET /users/me
+GET /messages/:conversationId
+POST /messages
+```
+
+这些接口必须登录后才能访问。
+
+你就可以写一个 JWT Guard：
+
+```ts
+@UseGuards(JwtAuthGuard)
+@Get('me')
+getMe() {  return ...}
+```
+
+它类似 Spring Security 里的认证拦截。
+
+Guard 的职责是：
+
+```
+这个请求能不能继续往下走？
+```
+
+比如：
+
+```
+有 token → 放行没 token → 拒绝token 过期 → 拒绝用户没权限 → 拒绝
+```
+
+### Pipe
+
+Pipe 主要做两件事：
+
+```
+参数校验
+参数转换
+```
+
+比如注册接口需要：
+
+```
+username 必填
+password 必填
+password 至少 6 位
+nickname 可选
+```
+
+你后面可以写 DTO：
+
+```ts
+export class RegisterDto {
+	username: string
+	password: string
+	nickname?: string
+}
+```
+
+再配合 `class-validator`：
+
+```ts
+export class RegisterDto {
+	@IsString()
+	@IsNotEmpty()
+	username: string
+	
+	@IsString()
+	@MinLength(6)
+	password: string
+	
+	@IsOptional()
+	@IsString()
+	nickname?: string
+}
+```
+
+这样请求参数不合法时，NestJS 会自动返回错误。
+
+这有点像 Spring Boot 里的：
+
+```java
+@Valid
+@NotBlank
+@Size
+```
+
+### Interceptor
+
+Interceptor 是 **拦截器**。
+
+它可以在 Controller 执行前后做事情。
+
+常见用途：
+
+```
+统一响应格式
+打印接口耗时
+记录日志
+转换返回数据
+缓存响应
+```
+
+比如你想所有接口都返回：
+
+```json
+{  
+	"code": 0,
+	"message": "success",
+	"data": {}
+}
+```
+
+就可以用 Interceptor 统一包一层。
+
+它有点像 Spring 里的 HandlerInterceptor / AOP。
+
+### Exception Filter
+
+Exception Filter 是 **异常过滤器**。
+
+Service 里可以直接抛异常：
+
+```ts
+throw new ConflictException('用户名已存在')
+```
+
+NestJS 会自动转成 HTTP 响应：
+
+```json
+{  
+	"statusCode": 409,
+	"message": "用户名已存在",
+	"error": "Conflict"
+}
+```
+
+后面你也可以自定义全局异常格式。
+
+比如统一成：
+
+```json
+{  
+	"code": 409,
+	"message": "用户名已存在",
+	"data": null
+}
+```
+
+这类似 Spring Boot 里的：
+
+```
+@ControllerAdvice
+@ExceptionHandler
+```
+### Provider
+
+Provider 是 NestJS 里所有“可被注入的东西”。
+
+最常见的是 Service：
+
+```ts
+@Injectable()
+export class AuthService {}
+```
+
+但不只是 Service，下面这些也可以是 Provider：
+
+```
+数据库服务 PrismaService
+Redis 服务 RedisService
+配置服务 ConfigService
+JWT 服务 JwtService
+文件上传服务 FileService
+LiveKit 服务 LivekitService
+消息队列服务 QueueService
+```
+
+只要它被注册到 `providers`，就可以被 NestJS 注入到其他类里。
+
+### Module 之间协作
+
+比如你的 `AuthService` 需要用 `PrismaService`。
+
+那 `PrismaModule` 需要导出它：
+
+```ts
+@Module({
+	providers: [PrismaService],
+	exports: [PrismaService],
+})
+export class PrismaModule {}
+```
+
+然后 `AuthModule` 导入它：
+
+```ts
+@Module({
+	imports: [PrismaModule],
+	controllers: [AuthController],
+	providers: [AuthService],
+})
+export class AuthModule {}
+```
+
+这样 `AuthService` 才能注入 `PrismaService`。
+
+不过我们前面把 `PrismaModule` 加了：
+
+```
+@Global()
+```
+
+所以它变成全局模块，其他模块就可以直接用。
+
+但注意：**不要滥用 `@Global()`。**
+
+通常只适合这些全局基础服务：
+
+```
+PrismaService
+ConfigService
+RedisService
+LoggerService
+```
+
+业务模块不要随便全局化。
+
+## 分层架构
+
+```
+Controller 层  
+	负责 HTTP 接口，不写复杂业务  
+  
+Service 层  
+	负责业务逻辑  
+  
+Repository / Prisma 层  
+	负责数据库操作  
+  
+Gateway 层  
+	负责 WebSocket  
+  
+DTO 层  
+	负责请求参数类型和校验  
+  
+Guard 层  
+	负责权限认证  
+  
+Module 层  
+	负责组织功能
+```
+
+比如消息模块：
+
+```
+messages/  
+	dto/  
+		send-message.dto.ts  
+		messages.controller.ts  
+		messages.service.ts  
+		messages.module.ts
+```
+
+Controller 不做业务，Service 不管请求，Module 管组织，Provider 被注入，Guard 管权限，Pipe 管校验，Interceptor 管前后处理，Filter 管异常。
