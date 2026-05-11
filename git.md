@@ -195,3 +195,8 @@ git revert --no-commit <commit_id>
 
 1. 使用 `git reflog` 查看操作历史，找到你“消失”的提交对应的 `commit_id`。
 2. 使用 `git reset --hard <commit_id>` 将 HEAD 指针重新指向那个提交，即可恢复。
+
+
+```latex
+xelatex -interaction=nonstopmode -halt-on-error wileyNJDv5_AMA.tex
+```
