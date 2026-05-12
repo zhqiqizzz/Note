@@ -31,21 +31,18 @@ let names: Array<string> = ['a', 'b']
 ```
 
 函数：
-
-TypeScript
-
-```
-function add(a: number, b: number): number {  return a + b}
+```TypeScript
+function add(a: number, b: number): number {
+  return a + b
+}
 ```
 
 箭头函数：
-
-TypeScript
-
-```
-const add = (a: number, b: number): number => {  return a + b}
+```TypeScript
+const add = (a: number, b: number): number => {
+  return a + b
+}
 ```
 
 面试表达：
-
 > TypeScript 可以给变量、函数参数、函数返回值添加类型约束，提前发现类型错误。
