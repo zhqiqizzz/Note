@@ -94,10 +94,7 @@ data = 'hello'
 data = true
 data.foo.bar()
 ```
-
-`any` 等于关闭类型检查。
-
-面试表达：
+`any` 等于关闭类型检查，面试表达：
 
 > any 会绕过 TypeScript 的类型检查，失去类型保护能力，所以企业项目里应该尽量少用。
 
