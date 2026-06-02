@@ -957,3 +957,492 @@ Cache Aside 就是：
 ```
 
 它牺牲一点点强一致性，换来高性能和简单可控，是实际项目里最常用的 Redis 缓存模式。
+
+## 消息队列
+
+消息队列代码一般分成两端：
+
+```
+Producer：生产者，负责投递消息
+Consumer：消费者，负责处理消息
+```
+
+以你前面学的 **NestJS + Redis + BullMQ** 为例，最常见用法是：接口收到请求后不直接做耗时任务，而是把任务丢进队列，后台 worker 慢慢处理。
+
+**1. 安装依赖**
+
+```bash
+npm install @nestjs/bullmq bullmq ioredis
+```
+
+还需要本地或服务器有 Redis：
+
+```bash
+redis-server
+```
+
+**2. 注册队列**
+
+```ts
+// queue.module.ts
+import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
+import { EmailProducer } from './email.producer';
+import { EmailConsumer } from './email.consumer';
+
+@Module({
+  imports: [
+    BullModule.forRoot({
+      connection: {
+        host: 'localhost',
+        port: 6379,
+      },
+    }),
+    BullModule.registerQueue({
+      name: 'email',
+    }),
+  ],
+  providers: [EmailProducer, EmailConsumer],
+  exports: [EmailProducer],
+})
+export class QueueModule {}
+```
+
+**3. 写生产者 Producer**
+
+```ts
+// email.producer.ts
+import { InjectQueue } from '@nestjs/bullmq';
+import { Injectable } from '@nestjs/common';
+import { Queue } from 'bullmq';
+
+@Injectable()
+export class EmailProducer {
+  constructor(@InjectQueue('email') private readonly emailQueue: Queue) {}
+
+  async sendWelcomeEmail(userId: number) {
+    await this.emailQueue.add(
+      'send-welcome-email',
+      { userId },
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
+  }
+}
+```
+
+这段意思是：
+
+```
+往 email 队列里放一个任务
+任务名：send-welcome-email
+任务数据：{ userId }
+失败最多重试 3 次
+重试间隔指数递增
+成功后自动删除任务记录
+失败后保留，方便排查
+```
+
+**4. 写消费者 Consumer**
+
+```ts
+// email.consumer.ts
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
+
+@Processor('email')
+export class EmailConsumer extends WorkerHost {
+  async process(job: Job<{ userId: number }>) {
+    if (job.name === 'send-welcome-email') {
+      console.log('开始发送欢迎邮件:', job.data.userId);
+
+      // 这里写真正的耗时逻辑
+      // await this.emailService.sendWelcomeEmail(job.data.userId);
+
+      console.log('欢迎邮件发送完成:', job.data.userId);
+    }
+  }
+}
+```
+
+这段意思是：
+
+```
+监听 email 队列
+拿到 send-welcome-email 任务
+读取 job.data.userId
+执行发邮件逻辑
+```
+
+**5. 在业务代码里投递消息**
+
+比如用户注册后发欢迎邮件：
+
+```ts
+// users.service.ts
+import { Injectable } from '@nestjs/common';
+import { EmailProducer } from '../queue/email.producer';
+
+@Injectable()
+export class UsersService {
+  constructor(private readonly emailProducer: EmailProducer) {}
+
+  async register(dto: { email: string; password: string }) {
+    // 1. 保存用户到数据库
+    const user = {
+      id: 1,
+      email: dto.email,
+    };
+
+    // 2. 投递后台任务
+    await this.emailProducer.sendWelcomeEmail(user.id);
+
+    // 3. 立即返回，不等邮件真的发完
+    return user;
+  }
+}
+```
+
+流程就是：
+
+```
+POST /register
+  -> UsersService.register()
+  -> 保存用户
+  -> emailProducer.sendWelcomeEmail(user.id)
+  -> 返回注册成功
+
+后台：
+  -> EmailConsumer.process()
+  -> 真正发送邮件
+```
+
+**6. Controller 示例**
+
+```ts
+// users.controller.ts
+import { Body, Controller, Post } from '@nestjs/common';
+import { UsersService } from './users.service';
+
+@Controller('users')
+export class UsersController {
+  constructor(private readonly usersService: UsersService) {}
+
+  @Post('register')
+  register(@Body() body: { email: string; password: string }) {
+    return this.usersService.register(body);
+  }
+}
+```
+
+**7. 启动后怎么测试**
+
+启动 NestJS：
+
+```bash
+npm run start:dev
+```
+
+请求接口：
+
+```bash
+curl -X POST http://localhost:3000/users/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"a@example.com","password":"123456"}'
+```
+
+你会看到接口很快返回：
+
+```json
+{
+  "id": 1,
+  "email": "a@example.com"
+}
+```
+
+同时后台日志打印：
+
+```
+开始发送欢迎邮件: 1
+欢迎邮件发送完成: 1
+```
+
+**核心理解**
+
+消息队列代码就三步：
+
+```
+1. 注册队列
+2. Producer 往队列 add job
+3. Consumer 监听队列 process job
+```
+
+你可以把它理解成：
+
+```
+Controller/Service：派活
+Queue：任务池
+Consumer/Worker：干活
+```
+
+最适合放进队列的代码：
+
+```
+发邮件
+发短信
+生成报表
+AI Agent 长任务
+文件解析
+图片处理
+同步第三方系统
+定时/延迟任务
+```
+
+不适合放队列的：
+
+```
+用户马上需要结果的查询
+必须立即知道成功失败的核心操作
+简单快速的本地计算
+```
+
+## 队列分发模式
+  
+Queue 和 Topic 是消息队列里的两种典型消息分发模式。
+
+**Queue：任务队列**
+
+Queue 的核心是：
+
+```
+一条消息只交给一个消费者处理
+```
+
+比如发邮件任务：
+
+```
+email queue
+  message1 -> worker A
+  message2 -> worker B
+  message3 -> worker A
+```
+
+多个消费者一起消费同一个 queue，是为了提高处理速度，但同一条消息不会被 A、B 同时处理。
+
+适合：
+
+```
+发邮件
+发短信
+生成报表
+图片压缩
+AI Agent 后台任务
+订单超时取消
+文件解析
+```
+
+你可以理解成：
+
+```
+一个任务，只需要一个工人完成
+```
+
+例子：
+
+```
+用户注册
+  -> 投递 SendWelcomeEmail 消息
+  -> 某一个 EmailWorker 处理这条消息
+```
+
+**Topic：发布订阅**
+
+Topic 的核心是：
+
+```
+一条消息可以被多个订阅者分别收到
+```
+
+比如订单创建事件：
+
+```
+order.created topic
+  OrderCreated message
+    -> 积分服务收到
+    -> 短信服务收到
+    -> 数据分析服务收到
+    -> 仓储服务收到
+```
+
+适合：
+
+```
+订单创建事件
+用户注册事件
+支付成功事件
+日志事件
+系统通知
+数据同步
+事件驱动架构
+```
+
+你可以理解成：
+
+```
+一件事情发生了，通知所有关心它的人
+```
+
+例子：
+
+```
+用户注册成功
+  -> 发布 UserRegistered 事件
+  -> 邮件模块发欢迎邮件
+  -> 积分模块送新人积分
+  -> 数据分析模块记录注册行为
+```
+
+**最关键区别**
+
+```
+Queue：竞争消费
+一条消息只被一个消费者处理。
+
+Topic：广播消费
+一条消息会被多个订阅组处理。
+```
+
+更直观：
+
+```
+Queue 像外卖订单：
+一个订单只分配给一个骑手。
+
+Topic 像朋友圈动态：
+你发一条动态，所有关注你的人都能看到。
+```
+
+**实际中会组合使用**
+
+很多 MQ 里不是简单二选一，而是组合。
+
+比如 RabbitMQ：
+
+```
+Producer -> Exchange -> Queue -> Consumer
+```
+
+Exchange 负责路由，Queue 负责存消息。
+
+如果想广播，就让多个 queue 绑定到同一个 exchange：
+
+```
+order.created exchange
+  -> email.queue
+  -> points.queue
+  -> analytics.queue
+```
+
+每个 queue 都会收到一份消息。
+
+Kafka 里是：
+
+```
+Topic -> Consumer Group
+```
+
+同一个 topic 下：
+
+```
+不同 consumer group 都会收到消息
+同一个 consumer group 内部竞争消费
+```
+
+比如：
+
+```
+topic: user.registered
+
+email-service group      收到一份
+points-service group     收到一份
+analytics-service group  收到一份
+
+email-service group 内如果有 3 个实例：
+  同一条消息只会被其中 1 个实例处理
+```
+
+所以 Kafka 里可以这样理解：
+
+```
+Topic 负责广播给不同消费组
+Consumer Group 内部像 Queue 一样分工消费
+```
+
+**怎么选**
+
+如果你的需求是：
+
+```
+一个任务只需要一个 worker 做
+```
+
+用 Queue。
+
+比如：
+
+```
+send-email
+generate-report
+process-file
+run-agent-task
+```
+
+如果你的需求是：
+
+```
+一个事件发生后，多个系统都要知道
+```
+
+用 Topic。
+
+比如：
+
+```
+user.registered
+order.created
+payment.succeeded
+agent.run.completed
+```
+
+**命名也不同**
+
+Queue 常用动词，表示任务：
+
+```
+send-email
+generate-report
+process-file
+run-agent
+```
+
+Topic 常用事件名，表示已经发生的事实：
+
+```
+user.registered
+order.created
+payment.succeeded
+task.completed
+```
+
+一句话总结：
+
+```
+Queue 是“派任务给一个人做”，Topic 是“发布事件给所有订阅者知道”。
+```
