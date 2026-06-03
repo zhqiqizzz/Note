@@ -451,7 +451,7 @@ type PageResult<T> = {
 
 Agent 任务列表：
 
-```
+```ts
 useQuery({
   queryKey: ['agent-runs'],
   queryFn: getAgentRuns,
@@ -460,15 +460,32 @@ useQuery({
 
 Agent 任务详情：
 
-`useQuery({ queryKey: ['agent-run', runId], queryFn: () => getAgentRun(runId), });`
+```ts
+useQuery({
+  queryKey: ['agent-run', runId],
+  queryFn: () => getAgentRun(runId),
+});
+```
 
 创建 Agent 任务：
 
-``useMutation({ mutationFn: createAgentRun, onSuccess: (data) => { router.push(`/agent-runs/${data.runId}`); }, });``
+```ts
+useMutation({
+  mutationFn: createAgentRun,
+  onSuccess: (data) => {
+    router.push(`/agent-runs/${data.runId}`);
+  },
+});
+```
 
 如果是 SSE 流式输出，TanStack Query 可以负责初始详情，SSE 负责实时增量：
 
-`useQuery 加载 run 基础信息 SSE 接收 token/tool/status 事件 实时更新页面局部状态 任务完成后 invalidate agent-run`
+```
+useQuery 加载 run 基础信息
+SSE 接收 token/tool/status 事件
+实时更新页面局部状态
+任务完成后 invalidate agent-run
+```
 
 这是很常见的组合。
 
@@ -476,7 +493,21 @@ Agent 任务详情：
 
 推荐分工：
 
-`Pinia： accessToken currentUser 主题 全局 UI 状态 TanStack Query： 任务列表 任务详情 Agent runs 文件列表 会话历史 工具调用记录`
+```
+Pinia：
+accessToken
+currentUser
+主题
+全局 UI 状态
+
+TanStack Query：
+任务列表
+任务详情
+Agent runs
+文件列表
+会话历史
+工具调用记录
+```
 
 不要把所有后端数据放 Pinia。  
 否则你要自己处理缓存、刷新、过期、重复请求，越写越累。
@@ -487,24 +518,37 @@ Agent 任务详情：
 
 比如：
 
-`一个很简单的登录表单 一次性提交 不需要缓存 不需要复用`
+```
+一个很简单的登录表单
+一次性提交
+不需要缓存
+不需要复用
+```
 
 直接调用 API 就行。
 
 适合用它的场景：
 
-`列表 详情 分页 多个组件复用同一接口 需要刷新 需要缓存 需要 mutation 后同步 UI`
-
-**14. 学习重点**
-
-你先掌握这几个就够：
-
-`useQuery useMutation queryKey invalidateQueries enabled staleTime 分页 mutation 后刷新列表`
+```
+列表
+详情
+分页
+多个组件复用同一接口
+需要刷新
+需要缓存
+需要 mutation 后同步 UI
+```
 
 一句话总结：
 
-`TanStack Query for Vue 是管理后端接口数据的工具，让你少写重复的 loading/error/cache/refetch 逻辑。`
+```
+
+TanStack Query for Vue 是管理后端接口数据的工具，让你少写重复的 loading/error/cache/refetch 逻辑。
+```
 
 在 Vue 全栈/Agent 项目里，它通常和 Pinia 分工：
 
-`Pinia 管用户登录态和前端全局状态 TanStack Query 管从后端来的数据`
+```
+Pinia 管用户登录态和前端全局状态
+TanStack Query 管从后端来的数据
+```
