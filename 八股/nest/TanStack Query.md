@@ -359,7 +359,7 @@ queryClient.invalidateQueries({
 
 两个重要配置。
 
-staleTime：
+==staleTime==：
 
 ```
 数据多久内算新鲜
@@ -377,15 +377,20 @@ useQuery({
 
 意思是 30 秒内不认为过期。
 
-gcTime：
+==gcTime==：
 
-`缓存无组件使用后，多久被清理`
+```
+缓存无组件使用后，多久被清理
+```
 
 默认通常够用。
 
 常见理解：
 
-`staleTime 控制重新请求频率 gcTime 控制缓存保留多久`
+```
+staleTime 控制重新请求频率
+gcTime 控制缓存保留多久
+```
 
 **9. enabled：条件请求**
 
@@ -393,21 +398,52 @@ gcTime：
 
 比如有 token 才请求当前用户：
 
-`const authStore = useAuthStore(); useQuery({ queryKey: ['me'], queryFn: getMe, enabled: computed(() => Boolean(authStore.accessToken)), });`
+```ts
+const authStore = useAuthStore();
+
+useQuery({
+  queryKey: ['me'],
+  queryFn: getMe,
+  enabled: computed(() => Boolean(authStore.accessToken)),
+});
+```
 
 或者有 id 才请求详情：
 
-`useQuery({ queryKey: ['agent-run', runId], queryFn: () => getAgentRun(runId.value), enabled: computed(() => Boolean(runId.value)), });`
+```ts
+useQuery({
+  queryKey: ['agent-run', runId],
+  queryFn: () => getAgentRun(runId.value),
+  enabled: computed(() => Boolean(runId.value)),
+});
+```
 
 **10. 分页**
 
 分页 queryKey 要包含页码：
 
-`const page = ref(1); const query = useQuery({ queryKey: ['tasks', { page }], queryFn: () => getTasks({ page: page.value, pageSize: 20, }), });`
+```ts
+const page = ref(1);
+
+const query = useQuery({
+  queryKey: ['tasks', { page }],
+  queryFn: () => getTasks({
+    page: page.value,
+    pageSize: 20,
+  }),
+});
+```
 
 后端返回：
 
-`type PageResult<T> = { items: T[]; total: number; page: number; pageSize: number; };`
+```ts
+type PageResult<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+```
 
 前端根据 total 渲染分页器。
 
@@ -415,7 +451,12 @@ gcTime：
 
 Agent 任务列表：
 
-`useQuery({ queryKey: ['agent-runs'], queryFn: getAgentRuns, });`
+```
+useQuery({
+  queryKey: ['agent-runs'],
+  queryFn: getAgentRuns,
+});
+```
 
 Agent 任务详情：
 
