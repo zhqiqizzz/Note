@@ -1,3 +1,6 @@
+
+# Vite 的完整流程
+
 我们专门把 **Vite 的流程**讲细一点。你可以把 Vite 理解成两套流程：
 
 ```
@@ -571,3 +574,480 @@ Vite 开发环境做的事：
 > 同时 Vite 会对 `node_modules` 做依赖预构建，用 esbuild 把 CommonJS 或模块数量很多的依赖提前转换成 ESM，放到 `node_modules/.vite/deps`，这样可以减少请求数量并提升启动速度。开发时文件变化后，Vite 通过 WebSocket 通知浏览器进行 HMR，实现快速更新。
 > 
 > 生产环境下，Vite 会使用 Rollup 从入口构建完整依赖图，进行 Tree Shaking、代码分包、CSS 提取、资源处理、压缩和文件名 hash，最终输出 `dist` 静态资源。所以 Vite 开发快是因为基于原生 ESM 和按需转换，生产构建则仍然会打包优化。
+
+# Webpack 的完整流程
+
+现在进入 Webpack。
+
+Webpack 的核心思想是：
+
+> 从入口文件开始，递归分析所有依赖，把各种资源处理成模块，最后打包输出浏览器能运行的文件。
+
+---
+
+**一、Webpack 项目入口**
+
+配置一般长这样：
+
+```
+// webpack.config.js
+const path = require('path')
+
+module.exports = {
+  mode: 'development',
+
+  entry: './src/main.js',
+
+  output: {
+    path: path.resolve(__dirname, 'dist'),
+    filename: 'bundle.js'
+  }
+}
+```
+
+入口：
+
+```
+entry: './src/main.js'
+```
+
+意思是：
+
+> Webpack 从 `src/main.js` 开始分析项目。
+
+---
+
+**二、从入口开始构建依赖图**
+
+比如：
+
+`main.js`：
+
+```
+import { createApp } from 'vue'
+import App from './App.vue'
+import './style.css'
+
+createApp(App).mount('#app')
+```
+
+Webpack 会分析出：
+
+```
+main.js
+  -> vue
+  -> App.vue
+  -> style.css
+```
+
+然后继续分析 `App.vue` 里面又依赖了什么：
+
+```
+<script>
+import Hello from './components/Hello.vue'
+
+export default {
+  components: {
+    Hello
+  }
+}
+</script>
+```
+
+依赖图变成：
+
+```
+main.js
+  -> vue
+  -> App.vue
+       -> Hello.vue
+  -> style.css
+```
+
+Webpack 会递归做这个过程。
+
+---
+
+**三、Webpack 默认只认识 JS 和 JSON**
+
+这是一个重点。
+
+Webpack 默认能处理：
+
+```
+.js
+.json
+```
+
+但不能直接处理：
+
+```
+.vue
+.css
+.scss
+.png
+.svg
+.ts
+```
+
+所以需要 loader。
+
+---
+
+**四、loader 是什么**
+
+loader 的作用是：
+
+> 把 Webpack 不认识的文件，转换成 Webpack 能理解的模块。
+
+比如 CSS：
+
+```
+import './style.css'
+```
+
+Webpack 默认不认识 CSS，所以要配置：
+
+```
+module: {
+  rules: [
+    {
+      test: /\.css$/,
+      use: ['style-loader', 'css-loader']
+    }
+  ]
+}
+```
+
+这里执行顺序是从右到左：
+
+```
+css-loader -> style-loader
+```
+
+`css-loader` 做什么？
+
+```
+解析 CSS 文件，把它变成 JS 能 import 的模块
+```
+
+`style-loader` 做什么？
+
+```
+运行时创建 <style> 标签，把 CSS 插入页面
+```
+
+所以：
+
+```
+import './style.css'
+```
+
+最后会变成类似：
+
+```
+const style = document.createElement('style')
+style.innerHTML = 'body { margin: 0 }'
+document.head.appendChild(style)
+```
+
+---
+
+**五、处理 Vue 文件**
+
+如果是 Vue 项目，需要：
+
+```
+{
+  test: /\.vue$/,
+  loader: 'vue-loader'
+}
+```
+
+`vue-loader` 会处理：
+
+```
+<template>
+  <div>{{ msg }}</div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      msg: 'hello'
+    }
+  }
+}
+</script>
+
+<style scoped>
+div {
+  color: red;
+}
+</style>
+```
+
+它会把 `.vue` 单文件组件拆开：
+
+```
+template -> 编译成 render 函数
+script -> JS 模块
+style -> 交给 css-loader / style-loader
+```
+
+最后让整个 `.vue` 文件变成 Webpack 能打包的 JS 模块。
+
+---
+
+**六、处理图片等静态资源**
+
+Webpack 5 里可以用 Asset Modules：
+
+```
+module: {
+  rules: [
+    {
+      test: /\.(png|jpg|gif|svg)$/,
+      type: 'asset'
+    }
+  ]
+}
+```
+
+Webpack 会根据资源大小决定：
+
+- 小文件转成 base64
+- 大文件输出成单独文件
+
+比如你写：
+
+```
+import logo from './logo.png'
+```
+
+Webpack 处理后，`logo` 可能变成：
+
+```
+'/assets/logo.8df12.png'
+```
+
+然后你可以：
+
+```
+img.src = logo
+```
+
+---
+
+**七、plugin 是什么**
+
+loader 是处理单个模块文件的。
+
+plugin 是参与 Webpack 构建流程的。
+
+比如：
+
+```
+const HtmlWebpackPlugin = require('html-webpack-plugin')
+const { VueLoaderPlugin } = require('vue-loader')
+
+module.exports = {
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: './public/index.html'
+    }),
+    new VueLoaderPlugin()
+  ]
+}
+```
+
+`HtmlWebpackPlugin` 做什么？
+
+```
+根据模板生成 dist/index.html
+并自动把打包后的 JS / CSS 注入进去
+```
+
+比如输出：
+
+```
+<div id="app"></div>
+<script src="bundle.js"></script>
+```
+
+`VueLoaderPlugin` 是配合 `vue-loader` 工作的。
+
+一句话：
+
+> loader 负责转换文件，plugin 负责扩展整个构建过程。
+
+---
+
+**八、Webpack 打包后产物是什么**
+
+开发时你写很多模块：
+
+```
+src/main.js
+src/App.vue
+src/style.css
+src/components/Hello.vue
+node_modules/vue
+```
+
+Webpack 最后可能输出：
+
+```
+dist/
+  index.html
+  bundle.js
+```
+
+或者生产环境会有：
+
+```
+dist/
+  index.html
+  js/
+    app.8d3f21.js
+    vendor.91ab2c.js
+  css/
+    app.73ab9.css
+  assets/
+    logo.221fe.png
+```
+
+浏览器最后加载的是这些打包后的文件，而不是你的源码文件。
+
+---
+
+**九、Webpack 开发环境流程**
+
+执行：
+
+```
+npm run serve
+```
+
+或者：
+
+```
+webpack serve
+```
+
+Webpack dev server 会做：
+
+```
+1. 读取 webpack 配置
+2. 从 entry 开始构建依赖图
+3. 使用 loader 转换各种模块
+4. 使用 plugin 扩展构建流程
+5. 把打包结果放到内存中
+6. 启动本地服务器
+7. 浏览器访问页面并加载 bundle
+8. 文件变化后重新编译相关模块
+9. 通过 HMR 或 live reload 更新页面
+```
+
+注意：
+
+> Webpack dev server 通常不会真的把文件写入 dist，而是把构建结果放在内存中，提高开发速度。
+
+---
+
+**十、Webpack 生产构建流程**
+
+执行：
+
+```
+npm run build
+```
+
+对应：
+
+```
+webpack --mode production
+```
+
+生产流程大概是：
+
+```
+1. 读取配置
+2. 从 entry 开始递归分析依赖
+3. loader 转换模块
+4. plugin 参与优化和输出
+5. Tree Shaking 删除没用代码
+6. 代码压缩
+7. CSS 提取
+8. 代码分割
+9. 文件名加 hash
+10. 输出到 dist
+```
+
+生产环境更关注：
+
+- 体积更小
+- 加载更快
+- 缓存更稳定
+
+---
+
+**十一、Webpack 的核心流程图**
+
+```
+entry
+  ↓
+递归分析依赖
+  ↓
+遇到不同资源，交给 loader 转换
+  ↓
+形成 dependency graph 依赖图
+  ↓
+plugin 参与构建生命周期
+  ↓
+chunk 分组
+  ↓
+生成 bundle
+  ↓
+输出 dist
+```
+
+这几个词很重要：
+
+```
+entry：入口
+loader：模块转换
+plugin：构建扩展
+dependency graph：依赖图
+chunk：代码块
+bundle：最终打包文件
+output：输出
+```
+
+---
+
+**十二、Vite 和 Webpack 流程对比**
+
+|对比项|Vite 开发环境|Webpack 开发环境|
+|---|---|---|
+|启动方式|启动 dev server，不全量打包业务代码|从 entry 开始打包|
+|模块加载|浏览器原生 ESM 按需请求|浏览器加载 bundle|
+|业务代码处理|请求到哪个模块处理哪个|启动时构建依赖图|
+|依赖处理|node_modules 预构建|统一进入打包流程|
+|HMR|基于 ESM 边界，更新快|基于 bundle 和模块热替换|
+|生产构建|Rollup 打包|Webpack 打包|
+
+一句话：
+
+> Vite 开发时把一部分模块加载工作交给浏览器原生 ESM，所以启动快；Webpack 则是自己先构建依赖图并打包成 bundle，再交给浏览器运行。
+
+---
+
+**十三、面试版总结**
+
+你可以这样说：
+
+> ESM 是 JavaScript 官方模块规范，也就是 `import/export`。现代浏览器可以通过 `<script type="module">` 原生加载 ESM，浏览器会解析模块依赖并继续请求子模块。但浏览器只认识明确路径，不认识 `vue` 这种裸模块导入，也不认识 `.vue`、`.ts`、`.css` 这些非标准模块，所以仍然需要构建工具处理。
+> 
+> Webpack 的流程是从 `entry` 入口开始，递归分析模块依赖，构建 dependency graph。遇到 CSS、Vue、图片、TS 等资源时，使用 loader 把它们转换成 Webpack 能理解的模块；plugin 则参与整个构建生命周期，比如生成 HTML、提取 CSS、压缩代码。最后 Webpack 会把模块分组成 chunk，生成 bundle，并输出到 dist。开发环境下 webpack dev server 通常把 bundle 放在内存中并支持 HMR，生产环境会做 Tree Shaking、代码压缩、代码分割和文件名 hash。
