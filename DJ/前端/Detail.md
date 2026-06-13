@@ -2393,3 +2393,306 @@ timeout
 > 事件循环的基本流程是：先执行一个宏任务，执行过程中遇到同步代码直接执行，遇到宏任务放入宏任务队列，遇到微任务放入微任务队列；当前宏任务执行完后，会清空所有微任务，包括微任务执行过程中新增的微任务；然后浏览器可能进行页面渲染，接着再执行下一个宏任务。
 > 
 > 所以 Promise.then 通常会比 setTimeout 更早执行，因为它是微任务，而 setTimeout 回调是下一个宏任务。`async/await` 本质上也是 Promise，`await` 后面的代码可以理解为进入微任务队列。事件循环的重点就是：同步代码先执行，微任务在当前宏任务结束后立刻清空，宏任务一轮一轮执行。
+
+# Node.js 事件循环
+**Node.js 事件循环不是简单的宏任务队列**
+
+Node.js 底层依赖 `libuv` 实现事件循环。
+
+它不是只有一个宏任务队列，而是分成多个阶段。
+
+常见阶段可以简化为：
+
+```
+timers
+  ↓
+pending callbacks
+  ↓
+idle / prepare
+  ↓
+poll
+  ↓
+check
+  ↓
+close callbacks
+```
+
+你重点记这几个就够了：
+
+|阶段|主要处理|
+|---|---|
+|`timers`|`setTimeout`、`setInterval`|
+|`poll`|I/O 回调，比如文件读取、网络请求|
+|`check`|`setImmediate`|
+|`close callbacks`|socket close 等关闭回调|
+
+所以 Node.js 的事件循环更像：
+
+```
+进入某个阶段
+执行该阶段队列里的回调
+清空 nextTick 队列
+清空 Promise 微任务队列
+进入下一个阶段
+```
+
+---
+
+**三、Node.js 里的微任务有两类**
+
+Node 里要特别注意：
+
+```
+process.nextTick()
+Promise.then()
+queueMicrotask()
+```
+
+其中：
+
+```
+process.nextTick()
+```
+
+不是标准浏览器 API，它是 Node 自己的。
+
+它的优先级通常比 Promise 微任务还高。
+
+看例子：
+
+```
+console.log('start')
+
+Promise.resolve().then(() => {
+  console.log('promise')
+})
+
+process.nextTick(() => {
+  console.log('nextTick')
+})
+
+console.log('end')
+```
+
+Node.js 输出通常是：
+
+```
+start
+end
+nextTick
+promise
+```
+
+因为当前同步代码执行完后，Node 会先清空 `nextTick` 队列，再执行 Promise 微任务队列。
+
+可以记成：
+
+```
+同步代码
+  ↓
+process.nextTick
+  ↓
+Promise / queueMicrotask
+  ↓
+下一轮事件循环阶段
+```
+
+---
+
+**四、setTimeout 和 setImmediate 的区别**
+
+Node 面试很爱问：
+
+```
+setTimeout(() => {
+  console.log('timeout')
+}, 0)
+
+setImmediate(() => {
+  console.log('immediate')
+})
+```
+
+这个输出顺序在主模块里不绝对稳定，可能是：
+
+```
+timeout
+immediate
+```
+
+也可能是：
+
+```
+immediate
+timeout
+```
+
+原因是：
+
+- `setTimeout(fn, 0)` 在 `timers` 阶段执行
+- `setImmediate(fn)` 在 `check` 阶段执行
+- 如果代码在主模块中运行，受启动耗时和计时器是否到期影响，顺序可能不固定
+
+但是如果放在 I/O 回调里，顺序通常比较明确：
+
+```
+const fs = require('fs')
+
+fs.readFile('./test.txt', () => {
+  setTimeout(() => {
+    console.log('timeout')
+  }, 0)
+
+  setImmediate(() => {
+    console.log('immediate')
+  })
+})
+```
+
+通常输出：
+
+```
+immediate
+timeout
+```
+
+因为 I/O 回调在 `poll` 阶段执行，执行完后会进入 `check` 阶段，所以 `setImmediate` 先执行。`setTimeout` 要等下一轮的 `timers` 阶段。
+
+---
+
+**五、浏览器有渲染，Node 没有页面渲染**
+
+这是很大的区别。
+
+浏览器事件循环里要考虑：
+
+```
+宏任务 -> 微任务 -> 渲染 -> 下一个宏任务
+```
+
+比如 DOM 更新后，浏览器可能在一轮事件循环末尾进行渲染。
+
+但 Node.js 没有 DOM，也没有页面渲染阶段。它关心的是：
+
+```
+定时器
+I/O
+网络
+文件
+进程
+流
+```
+
+所以 Node 的事件循环重点是各个 libuv 阶段。
+
+---
+
+**六、Node 的 I/O 更核心**
+
+浏览器里的异步很多和用户交互有关：
+
+```
+click
+scroll
+setTimeout
+Promise
+ajax
+requestAnimationFrame
+```
+
+Node.js 里的异步大量来自 I/O：
+
+```
+fs.readFile
+http request
+net socket
+database query
+stream
+```
+
+比如：
+
+```
+const fs = require('fs')
+
+fs.readFile('./a.txt', () => {
+  console.log('file read done')
+})
+```
+
+文件读取交给底层线程池或系统能力处理，完成后回调会进入事件循环的对应阶段，等 JS 主线程空闲后执行。
+
+---
+
+**七、一个综合例子**
+
+```
+console.log('start')
+
+setTimeout(() => {
+  console.log('timeout')
+}, 0)
+
+setImmediate(() => {
+  console.log('immediate')
+})
+
+Promise.resolve().then(() => {
+  console.log('promise')
+})
+
+process.nextTick(() => {
+  console.log('nextTick')
+})
+
+console.log('end')
+```
+
+Node.js 中常见输出：
+
+```
+start
+end
+nextTick
+promise
+timeout / immediate
+immediate / timeout
+```
+
+前四个比较确定：
+
+```
+start
+end
+nextTick
+promise
+```
+
+后面 `timeout` 和 `immediate` 在主模块中顺序不完全稳定。
+
+---
+
+**八、核心区别总结**
+
+|对比点|浏览器|Node.js|
+|---|---|---|
+|主要目标|页面交互、DOM、渲染|I/O、网络、文件、服务端任务|
+|事件循环模型|宏任务 + 微任务 + 渲染|libuv 多阶段事件循环|
+|微任务|`Promise`、`queueMicrotask`、`MutationObserver`|`process.nextTick`、`Promise`、`queueMicrotask`|
+|特殊队列|无 `process.nextTick`|`process.nextTick` 优先级很高|
+|渲染阶段|有|没有|
+|定时器|`setTimeout`、`setInterval`|`timers` 阶段处理|
+|`setImmediate`|浏览器一般没有|`check` 阶段处理|
+|I/O|ajax、事件等|文件、网络、stream，更核心|
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> 浏览器和 Node.js 都有事件循环，但侧重点不同。浏览器事件循环主要围绕宏任务、微任务和页面渲染展开，执行完一个宏任务后会清空微任务，然后浏览器可能进行渲染，再执行下一个宏任务。
+> 
+> Node.js 的事件循环基于 libuv，被分成多个阶段，比如 `timers`、`poll`、`check`、`close callbacks`。`setTimeout` 在 timers 阶段执行，I/O 回调主要在 poll 阶段执行，`setImmediate` 在 check 阶段执行。Node 还多了 `process.nextTick` 队列，它的优先级通常高于 Promise 微任务。
+> 
+> 所以浏览器重点关注渲染和用户交互，Node 重点关注 I/O 调度；浏览器没有 `process.nextTick` 和标准的 `setImmediate`，Node 也没有浏览器的页面渲染阶段。
