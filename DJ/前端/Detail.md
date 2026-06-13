@@ -3476,3 +3476,239 @@ SameSite 判断的是“站”，不是严格的 origin。
 > 跨域请求携带 cookie 需要前后端同时配置。前端如果用 axios，需要设置 `withCredentials: true`；如果用 fetch，需要设置 `credentials: 'include'`。后端需要返回 `Access-Control-Allow-Credentials: true`，并且 `Access-Control-Allow-Origin` 不能是 `*`，必须是具体的前端域名。
 > 
 > 同时 cookie 本身也要满足浏览器策略。如果是跨站请求，服务端设置 cookie 时需要加上 `SameSite=None; Secure`，并且通常要在 HTTPS 下才会生效。还要注意 cookie 的 Domain、Path 是否和请求目标匹配。如果是复杂请求，还需要正确处理 OPTIONS 预检请求。
+
+
+# `SameSite=Lax`
+
+> `SameSite=Lax` 在很多“同站跨域”场景下可以携带 cookie；但在真正“跨站”的 AJAX / fetch / axios 请求里，一般不行。真正第三方跨站请求通常需要 `SameSite=None; Secure`。
+
+---
+
+**一、先区分跨域和跨站**
+
+跨域看的是 origin：
+
+```
+协议 + 域名 + 端口
+```
+
+只要有一个不同，就是跨域。
+
+例如：
+
+```
+https://www.example.com
+https://api.example.com
+```
+
+这是跨域，因为域名不同。
+
+但它们通常是同站，因为主站点都是：
+
+```
+example.com
+```
+
+跨站看的是 site，简单理解是：
+
+```
+协议 + 可注册域名
+```
+
+例如：
+
+```
+https://www.example.com
+https://api.example.com
+```
+
+一般是同站。
+
+但：
+
+```
+https://www.example.com
+https://api.other.com
+```
+
+这是跨站。
+
+`SameSite` 管的是**跨站 cookie 发送策略**，不是严格意义上的跨域策略。
+
+---
+
+**二、SameSite=Lax 的规则**
+
+`SameSite=Lax` 大概意思是：
+
+> 大多数跨站子请求不带 cookie，但跨站的顶级导航 GET 请求可以带 cookie。
+
+什么叫顶级导航？
+
+比如用户点击链接：
+
+```
+<a href="https://api.example.com/page">跳转</a>
+```
+
+或者在地址栏直接访问：
+
+```
+https://api.example.com/page
+```
+
+这种是顶级导航。
+
+如果 cookie 是 `SameSite=Lax`，这种跨站 GET 导航请求通常可以带 cookie。
+
+---
+
+但下面这种不是顶级导航，而是子资源 / AJAX 请求：
+
+```
+fetch('https://api.other.com/user', {
+  credentials: 'include'
+})
+```
+
+或者：
+
+```
+<img src="https://api.other.com/a.png">
+```
+
+或者：
+
+```
+<form method="POST" action="https://api.other.com/login">
+```
+
+这类跨站请求，`SameSite=Lax` 通常不会携带 cookie。
+
+---
+
+**三、举例说明**
+
+假设前端页面是：
+
+```
+https://www.a.com
+```
+
+接口是：
+
+```
+https://api.b.com
+```
+
+服务端设置：
+
+```
+Set-Cookie: sid=abc; SameSite=Lax; Secure; HttpOnly
+```
+
+然后前端发：
+
+```
+fetch('https://api.b.com/user', {
+  credentials: 'include'
+})
+```
+
+这通常不会带 `sid`。
+
+因为这是：
+
+```
+跨站 + fetch 子请求
+```
+
+`SameSite=Lax` 会限制它。
+
+如果想让这种请求带 cookie，通常需要：
+
+```
+Set-Cookie: sid=abc; SameSite=None; Secure; HttpOnly
+```
+
+---
+
+**四、那什么情况下 Lax 可以？**
+
+比如页面在：
+
+```
+https://www.example.com
+```
+
+接口在：
+
+```
+https://api.example.com
+```
+
+这是：
+
+```
+跨域，但同站
+```
+
+如果 cookie 的 Domain 设置合理，比如：
+
+```
+Set-Cookie: sid=abc; Domain=.example.com; Path=/; SameSite=Lax; Secure; HttpOnly
+```
+
+那么请求：
+
+```
+fetch('https://api.example.com/user', {
+  credentials: 'include'
+})
+```
+
+在 SameSite 这一层通常是允许的。
+
+但仍然要满足 CORS：
+
+```
+Access-Control-Allow-Origin: https://www.example.com
+Access-Control-Allow-Credentials: true
+```
+
+前端也要设置：
+
+```
+credentials: 'include'
+```
+
+或 axios：
+
+```
+withCredentials: true
+```
+
+所以这里要分清：
+
+```
+SameSite=Lax 不是用来解决 CORS 的
+它只决定跨站时 cookie 能不能发
+```
+
+---
+
+**五、Lax / None / Strict 对比**
+
+|SameSite|行为|
+|---|---|
+|`Strict`|只有同站请求才带 cookie，跨站基本不带|
+|`Lax`|同站请求带；跨站顶级 GET 导航可能带；跨站 AJAX 通常不带|
+|`None`|允许跨站请求携带 cookie，但必须配合 `Secure`|
+
+现代浏览器如果不写 SameSite，很多情况下默认按：
+
+```
+SameSite=Lax
+```
+
+处理。
