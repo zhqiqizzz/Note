@@ -3711,4 +3711,290 @@ SameSite=Lax 不是用来解决 CORS 的
 SameSite=Lax
 ```
 
-处理。
+# 什么是简单请求？什么是复杂请求？
+
+这是 CORS 里的概念。浏览器会先判断一次跨域请求是不是**简单请求**：
+
+- 如果是简单请求：直接发真正请求。
+- 如果是复杂请求：先发一次 `OPTIONS` 预检请求，确认服务器允许后，再发真正请求。
+
+**简单请求**
+
+同时满足下面几个条件，才是简单请求。
+
+**1. 请求方法只能是这三个之一**
+
+```
+GET
+POST
+HEAD
+```
+
+比如：
+
+```
+fetch('https://api.example.com/user')
+```
+
+`GET` 可以。
+
+```
+fetch('https://api.example.com/user', {
+  method: 'DELETE'
+})
+```
+
+`DELETE` 不行，会变成复杂请求。
+
+---
+
+**2. 请求头只能包含 CORS 安全名单里的字段**
+
+常见允许的请求头包括：
+
+```
+Accept
+Accept-Language
+Content-Language
+Content-Type
+Range
+```
+
+但这里有细节，`Content-Type` 也不是随便什么值都行。
+
+比如你自己加了：
+
+```
+headers: {
+  Authorization: 'Bearer xxx'
+}
+```
+
+这就不是简单请求了，会触发预检。
+
+再比如：
+
+```
+headers: {
+  'X-Token': 'abc'
+}
+```
+
+自定义请求头也会触发预检。
+
+---
+
+**3. Content-Type 只能是这三种之一**
+
+如果有 `Content-Type`，只能是：
+
+```
+application/x-www-form-urlencoded
+multipart/form-data
+text/plain
+```
+
+例如：
+
+```
+fetch('https://api.example.com/login', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/x-www-form-urlencoded'
+  },
+  body: 'name=Tom&age=18'
+})
+```
+
+这是简单请求。
+
+但这个不是：
+
+```
+fetch('https://api.example.com/login', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ name: 'Tom' })
+})
+```
+
+因为：
+
+```
+Content-Type: application/json
+```
+
+不在简单请求允许范围内，所以会触发预检，属于复杂请求。
+
+---
+
+**复杂请求**
+
+只要不满足简单请求条件，就是复杂请求。
+
+常见复杂请求：
+
+```
+fetch('https://api.example.com/user', {
+  method: 'PUT'
+})
+```
+
+因为方法是 `PUT`。
+
+```
+fetch('https://api.example.com/user', {
+  method: 'DELETE'
+})
+```
+
+因为方法是 `DELETE`。
+
+```
+fetch('https://api.example.com/user', {
+  headers: {
+    Authorization: 'Bearer xxx'
+  }
+})
+```
+
+因为带了 `Authorization` 请求头。
+
+```
+fetch('https://api.example.com/user', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ name: 'Tom' })
+})
+```
+
+因为 `Content-Type` 是 `application/json`。
+
+---
+
+**复杂请求会发生什么**
+
+浏览器会先发一个 `OPTIONS` 预检请求。
+
+比如你写：
+
+```
+fetch('https://api.example.com/user', {
+  method: 'PUT',
+  headers: {
+    Authorization: 'Bearer xxx',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ name: 'Tom' })
+})
+```
+
+浏览器不会马上发 `PUT`。
+
+它会先发：
+
+```
+OPTIONS /user HTTP/1.1
+Origin: https://www.example.com
+Access-Control-Request-Method: PUT
+Access-Control-Request-Headers: authorization, content-type
+```
+
+意思是问服务器：
+
+```
+我这个来源 https://www.example.com
+想用 PUT 方法
+还想带 authorization 和 content-type 请求头
+你允许吗？
+```
+
+服务器如果允许，要返回类似：
+
+```
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://www.example.com
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE
+Access-Control-Allow-Headers: Authorization, Content-Type
+Access-Control-Allow-Credentials: true
+```
+
+浏览器看到允许后，才会继续发送真正的 `PUT` 请求。
+
+如果服务器预检没通过，真正请求不会发出去。
+
+---
+
+**简单请求也需要 CORS 响应头吗**
+
+需要。
+
+简单请求只是“不需要预检”，不是“不需要 CORS”。
+
+比如：
+
+```
+fetch('https://api.example.com/user')
+```
+
+浏览器会直接发真正请求。
+
+但响应里仍然需要：
+
+```
+Access-Control-Allow-Origin: https://www.example.com
+```
+
+否则浏览器会拦截响应，前端 JS 读不到结果。
+
+所以：
+
+```
+简单请求：直接发请求，但响应仍需 CORS 允许
+复杂请求：先发 OPTIONS 预检，再发真正请求
+```
+
+---
+
+**如果要带 cookie**
+
+无论简单还是复杂，只要跨域带 cookie，都要：
+
+前端：
+
+```
+fetch(url, {
+  credentials: 'include'
+})
+```
+
+后端：
+
+```
+Access-Control-Allow-Origin: https://www.example.com
+Access-Control-Allow-Credentials: true
+```
+
+并且不能：
+
+```
+Access-Control-Allow-Origin: *
+```
+
+如果是复杂请求，预检响应里也要正确处理这些头。
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> 简单请求和复杂请求是浏览器 CORS 里的分类。简单请求要求方法只能是 `GET`、`POST`、`HEAD`，请求头只能是 CORS 安全名单里的头，并且 `Content-Type` 只能是 `application/x-www-form-urlencoded`、`multipart/form-data` 或 `text/plain`。满足这些条件的跨域请求会直接发送真正请求。
+> 
+> 只要不满足这些条件，就是复杂请求，比如使用 `PUT`、`DELETE`，或者带 `Authorization`、自定义请求头，或者 `Content-Type` 是 `application/json`。复杂请求在真正请求前，浏览器会先发送 `OPTIONS` 预检请求，询问服务器是否允许该来源、方法和请求头。预检通过后，浏览器才会发送真正请求。
+> 
+> 需要注意，简单请求只是不会触发预检，不代表不需要 CORS。无论简单还是复杂，服务器响应都必须带正确的 `Access-Control-Allow-Origin`，否则浏览器仍然会拦截响应。
