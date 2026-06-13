@@ -1835,3 +1835,561 @@ Style -> Composite
 > 
 > 一般来说，回流一定会伴随重绘，因为布局变了以后页面需要重新画；但重绘不一定触发回流，比如只改背景色通常只会重绘。`display: none` 会让元素脱离文档流，所以会触发回流；`visibility: hidden` 只是隐藏但仍占位，所以通常只触发重绘。动画中尽量使用 `transform` 和 `opacity`，因为它们很多时候可以跳过布局和绘制，只在合成层处理，性能更好。
 
+# 事件循环
+
+你这里应该是想问：**浏览器事件循环机制 Event Loop**。这是前端面试高频题，而且经常和 `Promise`、`setTimeout`、`async/await` 一起考。
+
+**一、为什么需要事件循环**
+
+JavaScript 是**单线程**执行的。
+
+也就是说，同一时间 JS 主线程只能做一件事：
+
+```
+console.log(1)
+console.log(2)
+console.log(3)
+```
+
+一定按顺序执行。
+
+但浏览器里有很多异步任务：
+
+```
+setTimeout()
+Promise.then()
+DOM 事件
+ajax 请求
+script 脚本执行
+页面渲染
+```
+
+如果 JS 只能一行一行同步执行，那异步任务完成后，什么时候回到 JS 主线程执行？
+
+这就需要事件循环。
+
+一句话：
+
+> 事件循环是浏览器协调同步任务、异步任务、微任务、宏任务和页面渲染的一套调度机制。
+
+---
+
+**二、先记住几个核心概念**
+
+浏览器事件循环里，最重要的是：
+
+```
+调用栈 Call Stack
+宏任务 Macrotask / Task
+微任务 Microtask
+渲染 Render
+事件循环 Event Loop
+```
+
+---
+
+**调用栈 Call Stack**
+
+同步代码会进入调用栈执行。
+
+```
+function foo() {
+  console.log('foo')
+}
+
+function bar() {
+  foo()
+  console.log('bar')
+}
+
+bar()
+```
+
+执行顺序：
+
+```
+bar 入栈
+foo 入栈
+foo 执行完出栈
+bar 执行完出栈
+```
+
+调用栈空了之后，事件循环才有机会处理异步任务。
+
+---
+
+**三、宏任务是什么**
+
+常见宏任务：
+
+```
+script 整体代码
+setTimeout
+setInterval
+setImmediate // Node 中
+I/O
+UI 事件，比如 click、keydown
+postMessage
+MessageChannel
+```
+
+浏览器一开始执行整个 JS 文件，本身就是一个宏任务：
+
+```
+console.log('script start')
+```
+
+可以理解为：
+
+```
+第一个宏任务：执行整段 script
+```
+
+---
+
+**四、微任务是什么**
+
+常见微任务：
+
+```
+Promise.then / catch / finally
+queueMicrotask
+MutationObserver
+```
+
+微任务的优先级比宏任务高。
+
+也就是说：
+
+> 当前宏任务执行完后，会先清空所有微任务，再去执行下一个宏任务。
+
+---
+
+**五、最核心执行顺序**
+
+浏览器事件循环可以简化成：
+
+```
+1. 执行一个宏任务
+2. 执行过程中遇到同步代码，直接执行
+3. 遇到宏任务，放入宏任务队列
+4. 遇到微任务，放入微任务队列
+5. 当前宏任务执行完
+6. 清空所有微任务
+7. 必要时进行页面渲染
+8. 执行下一个宏任务
+9. 重复以上过程
+```
+
+关键句：
+
+> 每执行完一个宏任务，都会清空当前所有微任务，然后浏览器才可能进行渲染，再进入下一个宏任务。
+
+---
+
+**六、经典题 1**
+
+```
+console.log(1)
+
+setTimeout(() => {
+  console.log(2)
+}, 0)
+
+Promise.resolve().then(() => {
+  console.log(3)
+})
+
+console.log(4)
+```
+
+分析：
+
+```
+console.log(1)
+```
+
+同步执行，输出 `1`。
+
+```
+setTimeout(...)
+```
+
+放入宏任务队列。
+
+```
+Promise.then(...)
+```
+
+放入微任务队列。
+
+```
+console.log(4)
+```
+
+同步执行，输出 `4`。
+
+当前 script 这个宏任务结束后，清空微任务，输出 `3`。
+
+最后执行下一个宏任务，输出 `2`。
+
+结果：
+
+```
+1
+4
+3
+2
+```
+
+---
+
+**七、经典题 2：微任务里继续产生微任务**
+
+```
+Promise.resolve().then(() => {
+  console.log(1)
+
+  Promise.resolve().then(() => {
+    console.log(2)
+  })
+})
+
+Promise.resolve().then(() => {
+  console.log(3)
+})
+
+console.log(4)
+```
+
+先执行同步：
+
+```
+4
+```
+
+然后微任务队列最开始有两个：
+
+```
+then1
+then3
+```
+
+执行 `then1`：
+
+```
+输出 1
+产生新的微任务 then2，放到微任务队列末尾
+```
+
+此时微任务队列：
+
+```
+then3
+then2
+```
+
+继续清空：
+
+```
+输出 3
+输出 2
+```
+
+最终：
+
+```
+4
+1
+3
+2
+```
+
+注意：
+
+> 微任务队列必须清空，过程中新增的微任务也会在本轮继续执行。
+
+---
+
+**八、经典题 3：async / await**
+
+`async/await` 本质上也是基于 Promise。
+
+看这个：
+
+```
+async function fn() {
+  console.log(1)
+  await Promise.resolve()
+  console.log(2)
+}
+
+console.log(3)
+
+fn()
+
+console.log(4)
+```
+
+执行：
+
+```
+console.log(3)
+```
+
+输出 `3`。
+
+调用 `fn()`：
+
+```
+console.log(1)
+```
+
+输出 `1`。
+
+遇到：
+
+```
+await Promise.resolve()
+```
+
+`await` 后面的代码会被放到微任务里，相当于：
+
+```
+Promise.resolve().then(() => {
+  console.log(2)
+})
+```
+
+然后继续执行外面的同步代码：
+
+```
+console.log(4)
+```
+
+输出 `4`。
+
+同步结束后清空微任务，输出 `2`。
+
+结果：
+
+```
+3
+1
+4
+2
+```
+
+---
+
+**九、setTimeout 为什么不是准确 0ms**
+
+```
+setTimeout(() => {
+  console.log('timeout')
+}, 0)
+```
+
+`0ms` 不是马上执行。
+
+意思是：
+
+> 最少等待 0ms 后，把回调放入宏任务队列。
+
+但它要等当前宏任务执行完、微任务清空后，才有机会执行。
+
+比如：
+
+```
+setTimeout(() => {
+  console.log('timeout')
+}, 0)
+
+for (let i = 0; i < 1000000000; i++) {}
+
+console.log('end')
+```
+
+输出一定是：
+
+```
+end
+timeout
+```
+
+因为主线程被同步循环占着，`setTimeout` 回调只能等。
+
+---
+
+**十、事件循环和页面渲染的关系**
+
+浏览器不是每执行一点 JS 就马上渲染页面。
+
+大致是：
+
+```
+执行一个宏任务
+清空微任务
+浏览器判断是否需要渲染
+执行渲染
+执行下一个宏任务
+```
+
+比如：
+
+```
+const box = document.querySelector('.box')
+
+box.style.width = '100px'
+
+Promise.resolve().then(() => {
+  box.style.width = '200px'
+})
+
+setTimeout(() => {
+  box.style.width = '300px'
+}, 0)
+```
+
+大概率页面不会先显示 `100px`，再显示 `200px`。
+
+因为：
+
+```
+当前宏任务里改成 100px
+微任务里改成 200px
+微任务清空后才可能渲染
+```
+
+所以这一轮渲染时看到的可能已经是 `200px`。
+
+而 `setTimeout` 是下一个宏任务，可能在之后一帧变成 `300px`。
+
+---
+
+**十一、为什么微任务太多会阻塞渲染**
+
+因为浏览器要先清空微任务，再有机会渲染。
+
+比如：
+
+```
+function loop() {
+  Promise.resolve().then(loop)
+}
+
+loop()
+```
+
+这会不断产生微任务。
+
+微任务队列一直清不完，浏览器就很难进入渲染阶段，页面可能卡死。
+
+所以：
+
+> 微任务优先级高，但不能滥用。
+
+---
+
+**十二、事件循环和用户点击**
+
+比如用户点击按钮：
+
+```
+button.addEventListener('click', () => {
+  console.log('click')
+})
+```
+
+点击事件回调也是一个宏任务。
+
+大概流程：
+
+```
+用户点击按钮
+浏览器把 click 回调放入任务队列
+主线程空闲后执行 click 回调
+click 回调执行完
+清空微任务
+必要时渲染
+继续下一个任务
+```
+
+---
+
+**十三、完整例题**
+
+```
+console.log('start')
+
+setTimeout(() => {
+  console.log('timeout')
+}, 0)
+
+async function foo() {
+  console.log('foo start')
+  await Promise.resolve()
+  console.log('foo end')
+}
+
+foo()
+
+Promise.resolve().then(() => {
+  console.log('promise')
+})
+
+console.log('end')
+```
+
+分析：
+
+同步执行：
+
+```
+start
+foo start
+end
+```
+
+异步队列：
+
+```
+宏任务：timeout
+微任务：foo await 后面的代码、promise.then
+```
+
+清空微任务：
+
+```
+foo end
+promise
+```
+
+执行下一个宏任务：
+
+```
+timeout
+```
+
+最终：
+
+```
+start
+foo start
+end
+foo end
+promise
+timeout
+```
+
+---
+
+**十四、面试版回答**
+
+可以这样说：
+
+> 浏览器中的 JavaScript 是单线程执行的，事件循环用来协调同步代码、异步任务、微任务、宏任务以及页面渲染。同步代码会先进入调用栈执行，像整段 script、setTimeout、DOM 事件属于宏任务，Promise.then、queueMicrotask、MutationObserver 属于微任务。
+> 
+> 事件循环的基本流程是：先执行一个宏任务，执行过程中遇到同步代码直接执行，遇到宏任务放入宏任务队列，遇到微任务放入微任务队列；当前宏任务执行完后，会清空所有微任务，包括微任务执行过程中新增的微任务；然后浏览器可能进行页面渲染，接着再执行下一个宏任务。
+> 
+> 所以 Promise.then 通常会比 setTimeout 更早执行，因为它是微任务，而 setTimeout 回调是下一个宏任务。`async/await` 本质上也是 Promise，`await` 后面的代码可以理解为进入微任务队列。事件循环的重点就是：同步代码先执行，微任务在当前宏任务结束后立刻清空，宏任务一轮一轮执行。
