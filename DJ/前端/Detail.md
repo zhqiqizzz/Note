@@ -2696,3 +2696,527 @@ promise
 > Node.js 的事件循环基于 libuv，被分成多个阶段，比如 `timers`、`poll`、`check`、`close callbacks`。`setTimeout` 在 timers 阶段执行，I/O 回调主要在 poll 阶段执行，`setImmediate` 在 check 阶段执行。Node 还多了 `process.nextTick` 队列，它的优先级通常高于 Promise 微任务。
 > 
 > 所以浏览器重点关注渲染和用户交互，Node 重点关注 I/O 调度；浏览器没有 `process.nextTick` 和标准的 `setImmediate`，Node 也没有浏览器的页面渲染阶段。
+
+
+# 用户打开 URL 到浏览器完全渲染的全过程
+
+这是前端面试的超级高频题。建议你不要死背“DNS、TCP、HTTP、渲染”几个词，而是按一条主线讲：
+
+> 输入 URL 后，浏览器先找到服务器，拿到资源，然后解析资源，构建页面，最后渲染到屏幕上。
+
+可以分成 **网络阶段** 和 **渲染阶段**。
+
+**一、用户输入 URL**
+
+比如用户输入：
+
+```
+https://www.example.com/index.html
+```
+
+浏览器会先解析 URL：
+
+```
+协议：https
+域名：www.example.com
+路径：/index.html
+端口：默认 443
+```
+
+如果用户只输入：
+
+```
+www.example.com
+```
+
+浏览器还会补全协议，或者根据历史记录、搜索引擎策略判断是搜索还是访问网址。
+
+---
+
+**二、检查缓存**
+
+真正发请求前，浏览器会先看有没有缓存。
+
+常见缓存包括：
+
+```
+强缓存
+协商缓存
+DNS 缓存
+Service Worker 缓存
+```
+
+如果命中强缓存，比如：
+
+```
+Cache-Control: max-age=3600
+```
+
+浏览器可能直接从本地缓存读取资源，不发请求。
+
+如果强缓存过期，浏览器会发请求给服务器做协商缓存，比如带上：
+
+```
+If-None-Match
+If-Modified-Since
+```
+
+服务器如果返回：
+
+```
+304 Not Modified
+```
+
+浏览器继续用本地缓存。
+
+如果缓存没命中，才会进入真正网络请求。
+
+---
+
+**三、DNS 解析**
+
+浏览器要访问的是域名：
+
+```
+www.example.com
+```
+
+但网络通信需要 IP 地址。
+
+所以要做 DNS 解析，把域名解析成 IP：
+
+```
+www.example.com -> 93.184.216.34
+```
+
+DNS 查询大概会经过：
+
+```
+浏览器 DNS 缓存
+系统 DNS 缓存
+本地 hosts 文件
+路由器 / 本地 DNS 服务器
+根域名服务器
+顶级域名服务器
+权威 DNS 服务器
+```
+
+实际中如果缓存命中，就不会走完整链路。
+
+---
+
+**四、建立 TCP 连接**
+
+拿到 IP 后，如果是 HTTP/1.1 或 HTTP/2，底层通常要建立 TCP 连接。
+
+TCP 连接需要三次握手：
+
+```
+客户端 -> SYN -> 服务端
+服务端 -> SYN + ACK -> 客户端
+客户端 -> ACK -> 服务端
+```
+
+三次握手完成后，客户端和服务端之间就有了可靠连接。
+
+---
+
+**五、TLS 握手**
+
+如果是 HTTPS，还需要进行 TLS 握手。
+
+HTTPS = HTTP + TLS。
+
+TLS 握手大概做几件事：
+
+```
+协商加密算法
+验证服务器证书
+生成会话密钥
+建立安全加密通道
+```
+
+这样后续 HTTP 请求和响应就会被加密传输。
+
+所以 HTTPS 比 HTTP 多了 TLS 握手阶段，但现代浏览器会通过连接复用、TLS 1.3、会话恢复等方式优化。
+
+---
+
+**六、发送 HTTP 请求**
+
+连接建立后，浏览器发送 HTTP 请求。
+
+比如：
+
+```
+GET /index.html HTTP/1.1
+Host: www.example.com
+Cookie: xxx
+User-Agent: xxx
+Accept: text/html
+```
+
+如果是登录态页面，浏览器还会根据同源、路径、`SameSite` 等规则携带 cookie。
+
+---
+
+**七、服务器处理请求并返回响应**
+
+服务器收到请求后，可能经过：
+
+```
+Nginx
+后端应用
+数据库
+缓存 Redis
+文件系统
+CDN
+```
+
+然后返回 HTTP 响应：
+
+```
+HTTP/1.1 200 OK
+Content-Type: text/html
+Cache-Control: max-age=3600
+Content-Encoding: gzip
+
+<html>...</html>
+```
+
+如果资源不存在，可能返回：
+
+```
+404 Not Found
+```
+
+如果重定向，可能返回：
+
+```
+301 / 302
+Location: https://example.com/new
+```
+
+浏览器会根据状态码继续处理。
+
+---
+
+**八、浏览器接收 HTML，开始解析**
+
+浏览器拿到 HTML 后，不是等全部下载完才开始处理，而是边下载边解析。
+
+HTML 解析成：
+
+```
+DOM Tree
+```
+
+比如：
+
+```
+<div>
+  <p>Hello</p>
+</div>
+```
+
+会变成 DOM 节点树：
+
+```
+div
+ └─ p
+    └─ text
+```
+
+---
+
+**九、解析 CSS，构建 CSSOM**
+
+遇到 CSS：
+
+```
+<link rel="stylesheet" href="/style.css">
+```
+
+浏览器会下载 CSS，并解析成：
+
+```
+CSSOM Tree
+```
+
+CSSOM 记录每个选择器和样式规则。
+
+注意：
+
+> CSS 会阻塞渲染。
+
+因为浏览器必须知道元素最终样式，才能准确绘制页面。
+
+---
+
+**十、遇到 JS 怎么办**
+
+HTML 解析过程中如果遇到普通 script：
+
+```
+<script src="/main.js"></script>
+```
+
+默认会阻塞 HTML 解析。
+
+流程是：
+
+```
+暂停 HTML 解析
+下载 JS
+执行 JS
+继续解析 HTML
+```
+
+为什么？
+
+因为 JS 可能会修改 DOM：
+
+```
+document.write()
+document.querySelector('div').remove()
+```
+
+所以浏览器必须停下来执行它。
+
+如果是：
+
+```
+<script defer src="/main.js"></script>
+```
+
+JS 下载不阻塞 HTML 解析，等 DOM 解析完成后按顺序执行。
+
+如果是：
+
+```
+<script async src="/main.js"></script>
+```
+
+JS 下载不阻塞 HTML 解析，但下载完成后立刻执行，可能打断 HTML 解析。
+
+如果是：
+
+```
+<script type="module" src="/main.js"></script>
+```
+
+默认类似 `defer`，并且支持 ESM。
+
+---
+
+**十一、构建渲染树 Render Tree**
+
+浏览器有了 DOM 和 CSSOM 后，会合成：
+
+```
+Render Tree
+```
+
+Render Tree 只包含需要显示的节点。
+
+比如：
+
+```
+display: none;
+```
+
+对应元素不会进入渲染树。
+
+但：
+
+```
+visibility: hidden;
+```
+
+元素虽然看不见，但还占位置，一般仍然会参与布局。
+
+---
+
+**十二、布局 Layout / Reflow**
+
+有了 Render Tree 后，浏览器开始计算布局：
+
+```
+每个元素的位置
+每个元素的宽高
+文字如何换行
+盒模型大小
+元素之间怎么排列
+```
+
+比如：
+
+```
+.box {
+  width: 50%;
+  padding: 20px;
+}
+```
+
+浏览器要根据视口宽度、父元素大小、盒模型规则算出实际像素尺寸。
+
+这一步叫：
+
+```
+Layout / Reflow
+```
+
+---
+
+**十三、绘制 Paint**
+
+布局完成后，浏览器知道每个元素的位置和大小。
+
+接下来要绘制：
+
+```
+文字
+颜色
+背景
+边框
+阴影
+图片
+```
+
+这一步叫：
+
+```
+Paint / Repaint
+```
+
+浏览器会生成绘制指令，告诉后续阶段每一层该画什么。
+
+---
+
+**十四、合成 Composite**
+
+现代浏览器会把页面分成多个图层。
+
+比如这些元素可能被提升为单独图层：
+
+```
+transform
+opacity
+position: fixed
+will-change
+video
+canvas
+```
+
+合成阶段会把多个图层组合成最终画面，显示到屏幕上。
+
+这一步叫：
+
+```
+Composite
+```
+
+这也是为什么动画推荐用：
+
+```
+transform
+opacity
+```
+
+因为它们很多时候可以跳过布局和绘制，只在合成阶段处理，性能更好。
+
+---
+
+**十五、加载其他资源**
+
+在解析 HTML 的过程中，浏览器还会发现并下载其他资源：
+
+```
+<img src="/logo.png">
+<script src="/main.js">
+<link rel="stylesheet" href="/style.css">
+<link rel="preload" href="/font.woff2">
+```
+
+浏览器会根据资源优先级调度请求。
+
+比如：
+
+- CSS 优先级高，因为阻塞渲染
+- 首屏图片优先级较高
+- 懒加载图片优先级低
+- async 脚本不会阻塞 DOM 解析
+
+---
+
+**十六、DOMContentLoaded 和 load**
+
+两个事件也经常问。
+
+`DOMContentLoaded`：
+
+> HTML 被完整解析，DOM 树构建完成，并且 defer/module 脚本执行完成后触发。不一定等图片、视频等资源加载完成。
+
+`load`：
+
+> 页面所有资源都加载完成后触发，包括图片、CSS、JS、字体等。
+
+通常：
+
+```
+DOMContentLoaded 早于 load
+```
+
+---
+
+**十七、完整流程总结**
+
+可以这样串起来：
+
+```
+输入 URL
+  ↓
+浏览器解析 URL
+  ↓
+检查缓存
+  ↓
+DNS 解析域名得到 IP
+  ↓
+建立 TCP 连接
+  ↓
+HTTPS 进行 TLS 握手
+  ↓
+发送 HTTP 请求
+  ↓
+服务器处理请求并返回响应
+  ↓
+浏览器接收 HTML
+  ↓
+解析 HTML 构建 DOM
+  ↓
+解析 CSS 构建 CSSOM
+  ↓
+执行 JS，可能阻塞 DOM 解析
+  ↓
+DOM + CSSOM 生成 Render Tree
+  ↓
+Layout 计算位置和大小
+  ↓
+Paint 绘制像素
+  ↓
+Composite 合成图层
+  ↓
+页面展示完成
+```
+
+---
+
+**面试版回答**
+
+你可以这样说：
+
+> 用户输入 URL 后，浏览器首先会解析 URL，并检查缓存。如果缓存没有命中，就进行 DNS 解析，把域名解析成 IP；然后建立 TCP 连接，如果是 HTTPS，还会进行 TLS 握手。连接建立后浏览器发送 HTTP 请求，服务器处理后返回 HTML。
+> 
+> 浏览器拿到 HTML 后会边下载边解析，构建 DOM 树；遇到 CSS 会下载并解析成 CSSOM，CSS 会阻塞渲染；遇到普通 script 会暂停 HTML 解析，下载并执行 JS，因为 JS 可能修改 DOM。DOM 和 CSSOM 构建完成后，会生成 Render Tree，然后进入 Layout 阶段计算元素的位置和大小，再进入 Paint 阶段绘制颜色、文字、图片、边框等，最后通过 Composite 合成图层并显示到屏幕上。
+> 
+> 在这个过程中，`DOMContentLoaded` 表示 DOM 解析完成并且 defer/module 脚本执行完成，`load` 表示页面所有资源，包括图片、样式、脚本等都加载完成。
