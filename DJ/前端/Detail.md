@@ -3220,3 +3220,259 @@ Composite 合成图层
 > 浏览器拿到 HTML 后会边下载边解析，构建 DOM 树；遇到 CSS 会下载并解析成 CSSOM，CSS 会阻塞渲染；遇到普通 script 会暂停 HTML 解析，下载并执行 JS，因为 JS 可能修改 DOM。DOM 和 CSSOM 构建完成后，会生成 Render Tree，然后进入 Layout 阶段计算元素的位置和大小，再进入 Paint 阶段绘制颜色、文字、图片、边框等，最后通过 Composite 合成图层并显示到屏幕上。
 > 
 > 在这个过程中，`DOMContentLoaded` 表示 DOM 解析完成并且 defer/module 脚本执行完成，`load` 表示页面所有资源，包括图片、样式、脚本等都加载完成。
+
+# 跨域请求想传递 cookie
+
+跨域请求想传递 cookie，要同时满足 **前端、后端、cookie 属性** 三边配置。少一个都不行。
+
+**一、前端要开启携带凭证**
+
+如果用 `fetch`：
+
+```
+fetch('https://api.example.com/user', {
+  method: 'GET',
+  credentials: 'include'
+})
+```
+
+关键是：
+
+```
+credentials: 'include'
+```
+
+默认情况下，`fetch` 跨域请求不会带 cookie。
+
+如果用 `axios`：
+
+```
+axios.get('https://api.example.com/user', {
+  withCredentials: true
+})
+```
+
+或者全局配置：
+
+```
+axios.defaults.withCredentials = true
+```
+
+关键是：
+
+```
+withCredentials: true
+```
+
+---
+
+**二、后端 CORS 要允许携带凭证**
+
+后端响应头必须有：
+
+```
+Access-Control-Allow-Credentials: true
+```
+
+同时还要指定明确的 Origin：
+
+```
+Access-Control-Allow-Origin: https://www.example.com
+```
+
+不能写：
+
+```
+Access-Control-Allow-Origin: *
+```
+
+因为携带 cookie 时，浏览器不允许 `Access-Control-Allow-Origin` 是 `*`。
+
+正确示例：
+
+```
+Access-Control-Allow-Origin: https://www.example.com
+Access-Control-Allow-Credentials: true
+```
+
+错误示例：
+
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: true
+```
+
+---
+
+**三、cookie 本身要允许跨站发送**
+
+现在浏览器对第三方 cookie 管得很严。
+
+如果是跨站请求，服务端设置 cookie 时通常需要：
+
+```
+Set-Cookie: token=abc123; Path=/; SameSite=None; Secure; HttpOnly
+```
+
+关键是：
+
+```
+SameSite=None
+Secure
+```
+
+含义：
+
+- `SameSite=None`：允许跨站请求携带 cookie
+- `Secure`：只能在 HTTPS 下发送
+- `HttpOnly`：JS 不能通过 `document.cookie` 读取，减少 XSS 风险
+
+注意：
+
+> 如果设置了 `SameSite=None`，现代浏览器要求必须同时设置 `Secure`，也就是必须 HTTPS。
+
+---
+
+**四、完整流程示例**
+
+假设前端是：
+
+```
+https://www.example.com
+```
+
+后端是：
+
+```
+https://api.example.com
+```
+
+前端请求：
+
+```
+fetch('https://api.example.com/profile', {
+  credentials: 'include'
+})
+```
+
+后端响应：
+
+```
+Access-Control-Allow-Origin: https://www.example.com
+Access-Control-Allow-Credentials: true
+Content-Type: application/json
+```
+
+服务端设置 cookie：
+
+```
+Set-Cookie: sid=xxx; Path=/; SameSite=None; Secure; HttpOnly
+```
+
+之后浏览器再次请求：
+
+```
+GET /profile HTTP/1.1
+Host: api.example.com
+Cookie: sid=xxx
+Origin: https://www.example.com
+```
+
+---
+
+**五、如果有预检请求**
+
+如果是复杂请求，比如：
+
+```
+fetch('https://api.example.com/user', {
+  method: 'POST',
+  credentials: 'include',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ name: 'Tom' })
+})
+```
+
+浏览器可能先发 `OPTIONS` 预检请求。
+
+后端也要正确响应：
+
+```
+Access-Control-Allow-Origin: https://www.example.com
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS
+Access-Control-Allow-Headers: Content-Type, Authorization
+```
+
+否则真正的请求不会发出去。
+
+---
+
+**六、常见坑**
+
+1. **前端忘了加 `withCredentials` / `credentials`**
+
+```
+axios.get(url)
+```
+
+这样跨域默认不带 cookie。
+
+2. **后端写了 `Access-Control-Allow-Origin: *`**
+
+携带 cookie 时不能用 `*`。
+
+3. **cookie 没有设置 `SameSite=None; Secure`**
+
+跨站请求时 cookie 可能不会被发送。
+
+4. **本地 HTTP 环境测试失败**
+
+因为 `SameSite=None` 要求 `Secure`，而 `Secure` 要求 HTTPS。
+
+本地开发经常因此踩坑。
+
+5. **cookie 的 Domain / Path 不匹配**
+
+比如 cookie 设置在：
+
+```
+Domain=api.example.com
+```
+
+那它不会发给：
+
+```
+www.example.com
+```
+
+cookie 是根据目标请求域名决定是否携带的，不是根据前端页面域名。
+
+6. **把跨域和跨站混淆**
+
+跨域是协议、域名、端口任一不同。
+
+跨站主要看站点，比如 eTLD+1。
+
+例如：
+
+```
+https://www.example.com
+https://api.example.com
+```
+
+它们跨域，但通常是同站，因为主站点都是 `example.com`。
+
+SameSite 判断的是“站”，不是严格的 origin。
+
+---
+
+**七、面试版回答**
+
+可以这样说：
+
+> 跨域请求携带 cookie 需要前后端同时配置。前端如果用 axios，需要设置 `withCredentials: true`；如果用 fetch，需要设置 `credentials: 'include'`。后端需要返回 `Access-Control-Allow-Credentials: true`，并且 `Access-Control-Allow-Origin` 不能是 `*`，必须是具体的前端域名。
+> 
+> 同时 cookie 本身也要满足浏览器策略。如果是跨站请求，服务端设置 cookie 时需要加上 `SameSite=None; Secure`，并且通常要在 HTTPS 下才会生效。还要注意 cookie 的 Domain、Path 是否和请求目标匹配。如果是复杂请求，还需要正确处理 OPTIONS 预检请求。
