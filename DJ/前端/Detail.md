@@ -3037,7 +3037,7 @@ visibility: hidden;
 
 ---
 
-**十二、布局 Layout / Reflow**
+**十二、布局 Layout / Reflow重排**
 
 有了 Render Tree 后，浏览器开始计算布局：
 
@@ -3068,7 +3068,7 @@ Layout / Reflow
 
 ---
 
-**十三、绘制 Paint**
+**十三、绘制 Paint 重绘**
 
 布局完成后，浏览器知道每个元素的位置和大小。
 
