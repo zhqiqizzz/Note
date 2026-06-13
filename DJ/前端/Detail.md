@@ -1051,3 +1051,787 @@ output：输出
 > ESM 是 JavaScript 官方模块规范，也就是 `import/export`。现代浏览器可以通过 `<script type="module">` 原生加载 ESM，浏览器会解析模块依赖并继续请求子模块。但浏览器只认识明确路径，不认识 `vue` 这种裸模块导入，也不认识 `.vue`、`.ts`、`.css` 这些非标准模块，所以仍然需要构建工具处理。
 > 
 > Webpack 的流程是从 `entry` 入口开始，递归分析模块依赖，构建 dependency graph。遇到 CSS、Vue、图片、TS 等资源时，使用 loader 把它们转换成 Webpack 能理解的模块；plugin 则参与整个构建生命周期，比如生成 HTML、提取 CSS、压缩代码。最后 Webpack 会把模块分组成 chunk，生成 bundle，并输出到 dist。开发环境下 webpack dev server 通常把 bundle 放在内存中并支持 HMR，生产环境会做 Tree Shaking、代码压缩、代码分割和文件名 hash。
+
+# 重排和重绘
+
+**浏览器渲染大致流程**
+
+页面从代码到屏幕，大概经历：
+
+```
+HTML -> DOM
+CSS -> CSSOM
+DOM + CSSOM -> Render Tree
+计算布局 Layout/Reflow
+绘制 Paint
+合成 Composite
+```
+
+其中 **Layout/Reflow** 做的是：
+
+> 计算每个元素在页面里的几何信息，比如宽、高、位置、边距、换行、滚动区域等。
+
+比如浏览器要知道：
+
+```
+这个 div 宽多少？
+这个 p 文字换几行？
+这个元素距离视口顶部多少？
+父元素会不会被子元素撑高？
+```
+
+这些都属于布局计算。
+
+---
+
+**什么是回流**
+
+回流，也叫 Layout / Reflow，就是浏览器重新计算元素几何信息。
+
+比如你改了：
+
+```
+box.style.width = '300px'
+```
+
+浏览器会知道：
+
+> 这个元素宽度变了，可能影响自己、子元素、后面的兄弟元素、父元素高度。
+
+于是相关区域的布局需要重新计算。
+
+会触发回流的常见操作：
+
+```
+el.style.width = '100px'
+el.style.height = '100px'
+el.style.margin = '20px'
+el.style.padding = '20px'
+el.style.display = 'none'
+el.classList.add('large')
+document.body.appendChild(newNode)
+```
+
+这些都会改变布局。
+
+---
+
+**为什么读取 offsetHeight 会强制回流**
+
+关键点是：浏览器为了性能，并不是你一改样式就立刻重新布局。
+
+比如：
+
+```
+box.style.width = '300px'
+box.style.height = '200px'
+box.style.marginTop = '20px'
+```
+
+浏览器可能会先把这些修改标记为：
+
+```
+布局已脏，需要稍后重新计算
+```
+
+它不会每行 JS 都立刻重排，因为那样太慢。
+
+正常情况下，浏览器会等 JS 执行完，在下一帧统一做布局和绘制。
+
+但是如果你在修改样式后，马上读取布局信息：
+
+```
+box.style.width = '300px'
+
+console.log(box.offsetHeight)
+```
+
+浏览器就必须回答你：
+
+```
+当前 box 的最新高度是多少？
+```
+
+可是前面的 `width = 300px` 可能已经影响了高度，比如文字换行变了，内容高度变了。
+
+为了给你一个准确的 `offsetHeight`，浏览器只能立刻把之前挂起的样式和布局计算完成。
+
+这就叫：
+
+> 强制同步布局，或者强制回流。
+
+---
+
+**一个典型例子**
+
+```
+const box = document.querySelector('.box')
+
+box.style.width = '300px'
+
+const height = box.offsetHeight
+
+box.style.height = height + 100 + 'px'
+```
+
+这里流程是：
+
+```
+1. 修改 width
+2. 浏览器标记布局失效
+3. 读取 offsetHeight
+4. 浏览器被迫立即重新计算布局
+5. 返回最新 height
+6. 再修改 height
+7. 后续又需要重新布局
+```
+
+如果这种逻辑在循环里，就很伤性能。
+
+---
+
+**哪些属性会触发强制布局**
+
+常见会读取最新布局信息的属性包括：
+
+```
+el.offsetWidth
+el.offsetHeight
+el.offsetTop
+el.offsetLeft
+
+el.clientWidth
+el.clientHeight
+el.clientTop
+el.clientLeft
+
+el.scrollWidth
+el.scrollHeight
+el.scrollTop
+el.scrollLeft
+
+el.getBoundingClientRect()
+
+window.getComputedStyle(el).width
+```
+
+这些属性要么关心尺寸，要么关心位置，要么关心滚动，要么关心最终计算样式。
+
+浏览器为了返回准确值，可能会先完成布局计算。
+
+注意措辞是：**可能会触发**。
+
+如果当前布局本来就是干净的，没有待处理的样式修改，那么读取这些属性不一定产生额外回流。
+
+真正危险的是这种模式：
+
+```
+写样式 -> 读布局 -> 写样式 -> 读布局
+```
+
+---
+
+**最糟糕的写法：布局抖动**
+
+比如：
+
+```
+const items = document.querySelectorAll('.item')
+
+items.forEach(item => {
+  item.style.width = '300px'
+  console.log(item.offsetHeight)
+})
+```
+
+每次循环都是：
+
+```
+写 style
+读 offsetHeight
+写 style
+读 offsetHeight
+...
+```
+
+浏览器可能被迫多次同步布局。
+
+这叫：
+
+```
+layout thrashing
+布局抖动
+```
+
+它会让页面卡顿。
+
+---
+
+**更好的写法：读写分离**
+
+把所有读取布局的操作放一起，再统一写入样式。
+
+差写法：
+
+```
+items.forEach(item => {
+  item.style.width = '300px'
+  const height = item.offsetHeight
+  item.style.height = height + 20 + 'px'
+})
+```
+
+好写法：
+
+```
+const heights = []
+
+items.forEach(item => {
+  heights.push(item.offsetHeight)
+})
+
+items.forEach((item, index) => {
+  item.style.width = '300px'
+  item.style.height = heights[index] + 20 + 'px'
+})
+```
+
+更准确一点，如果改宽度会影响高度，那就应该先统一改宽度，再在下一帧读高度：
+
+```
+items.forEach(item => {
+  item.style.width = '300px'
+})
+
+requestAnimationFrame(() => {
+  const heights = Array.from(items, item => item.offsetHeight)
+
+  items.forEach((item, index) => {
+    item.style.height = heights[index] + 20 + 'px'
+  })
+})
+```
+
+这样浏览器有机会在帧边界统一处理布局。
+
+---
+
+**requestAnimationFrame 的作用**
+
+`requestAnimationFrame` 会在浏览器下一次绘制前执行。
+
+常用于把 DOM 操作安排到合适的渲染节奏里。
+
+例如：
+
+```
+box.style.width = '300px'
+
+requestAnimationFrame(() => {
+  const rect = box.getBoundingClientRect()
+  console.log(rect.height)
+})
+```
+
+这样比立刻读：
+
+```
+box.style.width = '300px'
+console.log(box.getBoundingClientRect())
+```
+
+更不容易造成频繁的同步布局。
+
+但要注意：`requestAnimationFrame` 不是万能消除回流。它只是让你更容易把操作安排成：
+
+```
+一批写 -> 浏览器处理 -> 一批读/写
+```
+
+真正核心还是避免反复交替读写布局。
+
+---
+
+**getBoundingClientRect 为什么也会触发**
+
+```
+const rect = el.getBoundingClientRect()
+```
+
+它返回：
+
+```
+{
+  x,
+  y,
+  width,
+  height,
+  top,
+  right,
+  bottom,
+  left
+}
+```
+
+这些都是元素相对于视口的位置和尺寸。
+
+如果前面刚改了布局：
+
+```
+el.style.marginTop = '100px'
+```
+
+那 `top`、`bottom` 都变了。
+
+所以浏览器必须先确保布局是最新的，才能返回准确的矩形信息。
+
+---
+
+**Vue / React 中也会遇到**
+
+比如 Vue 里：
+
+```
+state.show = true
+
+const height = panel.value.offsetHeight
+```
+
+这时候可能读不到你想要的最新 DOM，因为 Vue 更新 DOM 是异步的。
+
+所以通常要：
+
+```
+import { nextTick } from 'vue'
+
+state.show = true
+
+await nextTick()
+
+const height = panel.value.offsetHeight
+```
+
+但这里也有性能问题：
+
+```
+await nextTick()
+const height = panel.value.offsetHeight
+```
+
+如果前面有大量 DOM 更新，读取高度依然可能迫使浏览器计算最新布局。
+
+`nextTick` 解决的是：
+
+```
+等 Vue 把 DOM 更新完
+```
+
+不是解决：
+
+```
+完全避免回流
+```
+
+---
+
+**如何减少回流**
+
+常见优化：
+
+1. **读写分离**
+
+```
+const rect = el.getBoundingClientRect()
+
+el.style.width = rect.width + 20 + 'px'
+```
+
+避免在循环里交替读写。
+
+2. **批量修改 class，而不是多次改 style**
+
+```
+el.classList.add('active')
+```
+
+比连续写很多 style 更容易维护，也方便浏览器优化。
+
+3. **使用 transform 做动画**
+
+差：
+
+```
+el.style.left = x + 'px'
+```
+
+好：
+
+```
+el.style.transform = `translateX(${x}px)`
+```
+
+`left/top/width/height` 容易触发布局，`transform/opacity` 通常只触发合成，性能更好。
+
+4. **脱离文档流后再操作**
+
+比如大量插入节点时，可以用 `DocumentFragment`：
+
+```
+const fragment = document.createDocumentFragment()
+
+for (let i = 0; i < 1000; i++) {
+  const li = document.createElement('li')
+  li.textContent = i
+  fragment.appendChild(li)
+}
+
+list.appendChild(fragment)
+```
+
+减少多次插入真实 DOM。
+
+5. **复杂动画用 absolute/fixed 定位或独立图层**
+
+减少对周围元素布局的影响。
+
+重绘，也叫 `Repaint`，指的是：
+
+> 元素的几何布局没有变化，但是外观样式变了，浏览器需要重新把它画出来。
+
+也就是说，元素的：
+
+```
+位置没变
+大小没变
+占用空间没变
+```
+
+但视觉表现变了，比如颜色、背景、阴影等变了。
+
+例如：
+
+```
+box.style.color = 'red'
+box.style.backgroundColor = 'blue'
+box.style.visibility = 'hidden'
+```
+
+这些通常会触发重绘，但不一定触发回流。
+
+---
+
+**回流和重绘的区别**
+
+回流 `Reflow / Layout` 是重新计算布局。
+
+比如：
+
+```
+box.style.width = '300px'
+box.style.height = '200px'
+box.style.marginTop = '20px'
+```
+
+这些会影响元素尺寸或位置，所以浏览器要重新算布局。
+
+重绘 `Repaint` 是重新绘制外观。
+
+比如：
+
+```
+box.style.backgroundColor = 'red'
+box.style.color = '#333'
+box.style.borderColor = 'blue'
+```
+
+这些不影响元素占据的空间，只影响它长什么样，所以通常只需要重新绘制。
+
+可以这样记：
+
+```
+回流：重新算位置和大小
+重绘：重新画颜色和外观
+```
+
+---
+
+**一个例子**
+
+HTML：
+
+```
+<div class="box">hello</div>
+```
+
+CSS：
+
+```
+.box {
+  width: 100px;
+  height: 100px;
+  background: skyblue;
+}
+```
+
+如果执行：
+
+```
+const box = document.querySelector('.box')
+
+box.style.backgroundColor = 'red'
+```
+
+元素还是：
+
+```
+100px × 100px
+```
+
+位置也没变。
+
+只是背景色从蓝色变成红色。
+
+所以浏览器不需要重新计算布局，只需要重新绘制这个区域。
+
+这就是重绘。
+
+---
+
+**哪些操作会触发重绘**
+
+常见触发重绘的属性：
+
+```
+color
+background
+background-color
+border-color
+visibility
+box-shadow
+outline
+text-decoration
+```
+
+比如：
+
+```
+el.style.color = 'red'
+el.style.backgroundColor = '#000'
+el.style.boxShadow = '0 0 10px rgba(0,0,0,.3)'
+el.style.visibility = 'hidden'
+```
+
+这些通常不会改变布局，但会改变视觉效果。
+
+---
+
+**注意：有些属性可能既触发回流又触发重绘**
+
+比如：
+
+```
+el.style.width = '200px'
+```
+
+宽度变了，浏览器先要重新计算布局。
+
+布局变了之后，元素占据的位置也变了，最后还要重新绘制。
+
+所以：
+
+```
+回流一定会伴随重绘
+重绘不一定会伴随回流
+```
+
+这是很重要的一句话。
+
+例如：
+
+```
+el.style.backgroundColor = 'red'
+```
+
+通常只是重绘。
+
+但：
+
+```
+el.style.width = '200px'
+```
+
+通常是：
+
+```
+回流 + 重绘
+```
+
+---
+
+**display:none 和 visibility:hidden 的区别**
+
+这个经常和回流、重绘一起考。
+
+```
+el.style.display = 'none'
+```
+
+元素从文档流中消失，不再占据空间。
+
+会影响布局，所以会触发回流。
+
+```
+el.style.visibility = 'hidden'
+```
+
+元素只是看不见，但仍然占据原来的空间。
+
+不影响布局，通常只触发重绘。
+
+所以：
+
+```
+display: none -> 回流 + 重绘
+visibility: hidden -> 重绘
+```
+
+---
+
+**opacity 和 transform 更特殊**
+
+比如：
+
+```
+el.style.opacity = '0.5'
+el.style.transform = 'translateX(100px)'
+```
+
+它们通常不会触发布局。
+
+很多情况下，浏览器可以把元素提升到合成层，由 GPU 在合成阶段处理。
+
+也就是说，它们可能连普通重绘都不需要，只需要合成。
+
+大致可以理解为：
+
+```
+layout -> paint -> composite
+```
+
+`transform` 和 `opacity` 在很多动画场景里可以跳过 layout 和 paint，只走 composite。
+
+所以动画性能优化里经常说：
+
+> 尽量使用 `transform` 和 `opacity` 做动画，避免频繁改变 `left/top/width/height`。
+
+比如差写法：
+
+```
+box.style.left = x + 'px'
+```
+
+可能触发回流。
+
+好写法：
+
+```
+box.style.transform = `translateX(${x}px)`
+```
+
+通常只触发合成。
+
+---
+
+**重绘也可能很贵**
+
+有些人会误以为：
+
+> 重绘比回流轻，所以无所谓。
+
+不完全对。
+
+重绘虽然通常比回流轻，但如果绘制区域很大，或者样式很复杂，也会很耗性能。
+
+比如：
+
+```
+box-shadow: 0 0 50px rgba(0, 0, 0, .5);
+filter: blur(10px);
+```
+
+这类效果绘制成本高。
+
+如果你在动画中频繁改变它们：
+
+```
+el.style.boxShadow = `0 0 ${size}px rgba(0,0,0,.5)`
+```
+
+可能会导致明显卡顿。
+
+所以不仅要避免回流，也要避免大面积、复杂样式的频繁重绘。
+
+---
+
+**浏览器渲染流程里，重绘在哪一步**
+
+简化流程：
+
+```
+JS 修改样式
+  ↓
+Style 样式计算
+  ↓
+Layout 回流，计算位置和尺寸
+  ↓
+Paint 重绘，把元素画成像素
+  ↓
+Composite 合成，把图层合成到屏幕
+```
+
+如果只改颜色：
+
+```
+el.style.color = 'red'
+```
+
+大概是：
+
+```
+Style -> Paint -> Composite
+```
+
+如果改宽度：
+
+```
+el.style.width = '200px'
+```
+
+大概是：
+
+```
+Style -> Layout -> Paint -> Composite
+```
+
+如果改 transform：
+
+```
+el.style.transform = 'translateX(100px)'
+```
+
+理想情况下是：
+
+```
+Style -> Composite
+```
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> 重绘是指元素的布局没有变化，但是外观样式发生变化，浏览器需要重新绘制元素，比如修改 `color`、`background-color`、`visibility`、`box-shadow` 等。它和回流的区别是，回流会重新计算元素的位置和尺寸，而重绘只是重新绘制视觉效果。
+> 
+> 一般来说，回流一定会伴随重绘，因为布局变了以后页面需要重新画；但重绘不一定触发回流，比如只改背景色通常只会重绘。`display: none` 会让元素脱离文档流，所以会触发回流；`visibility: hidden` 只是隐藏但仍占位，所以通常只触发重绘。动画中尽量使用 `transform` 和 `opacity`，因为它们很多时候可以跳过布局和绘制，只在合成层处理，性能更好。
+
