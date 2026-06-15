@@ -4549,3 +4549,340 @@ npm install rollup-plugin-visualizer
 > Web 优化主要从几个方面入手。加载优化包括压缩资源、懒加载图片、使用 CDN、合理配置缓存策略、preload 关键资源。渲染优化包括避免频繁读写布局、用 transform 和 opacity 做动画、长列表用虚拟滚动、大计算任务用 Web Worker。代码层面做 Tree Shaking、代码分割、防抖节流、避免内存泄漏。构建优化包括生产环境压缩、合理分包、开启 gzip。网络层可以用 HTTP/2、减少重定向、静态资源上 CDN。
 > 
 > 具体做优化时，通常先用 Lighthouse 或 Performance API 分析性能瓶颈，然后针对性优化，比如首屏慢就优化关键路径，包体积大就做代码分割和 Tree Shaking，列表卡顿就用虚拟列表。优化后再通过监控平台跟踪真实用户数据，形成闭环。
+
+
+# PWA 是什么
+
+PWA 全称是：
+
+```
+Progressive Web App
+```
+
+中文一般叫：
+
+```
+渐进式 Web 应用
+```
+
+它不是某一个框架，而是一组 Web 技术和设计理念。
+
+简单说：
+
+> PWA 是让普通网页拥有接近原生 App 体验的一种方案，比如可以离线访问、添加到桌面、缓存资源、消息推送等。
+
+---
+
+**PWA 主要由什么组成**
+
+PWA 常见核心能力有三个：
+
+```
+HTTPS
+Web App Manifest
+Service Worker
+```
+
+---
+
+**1. HTTPS**
+
+PWA 通常要求运行在 HTTPS 下。
+
+原因是 PWA 能力比较敏感，比如缓存请求、拦截网络、推送通知，所以浏览器要求安全上下文。
+
+本地开发的 `localhost` 一般可以例外。
+
+---
+
+**2. Web App Manifest**
+
+Manifest 是一个配置文件，通常叫：
+
+```
+manifest.json
+```
+
+它描述这个 Web 应用像 App 一样安装到桌面时的表现。
+
+比如：
+
+```
+{
+  "name": "My App",
+  "short_name": "App",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#409eff",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+HTML 中引入：
+
+```
+<link rel="manifest" href="/manifest.json">
+```
+
+它能控制：
+
+- 应用名称
+- 桌面图标
+- 启动页
+- 主题色
+- 是否像独立 App 一样打开
+
+比如：
+
+```
+"display": "standalone"
+```
+
+表示打开时更像原生 App，不显示浏览器地址栏。
+
+---
+
+**3. Service Worker**
+
+Service Worker 是 PWA 的核心。
+
+它是运行在浏览器后台的 JS 脚本，和页面主线程分离。
+
+它可以拦截网络请求：
+
+```
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request).then(cacheResponse => {
+      return cacheResponse || fetch(event.request)
+    })
+  )
+})
+```
+
+这段代码意思是：
+
+> 请求资源时，先看缓存里有没有，有就用缓存，没有再走网络。
+
+页面注册 Service Worker：
+
+```
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+}
+```
+
+Service Worker 常用于：
+
+- 静态资源缓存
+- 离线访问
+- 请求代理
+- 后台同步
+- 消息推送
+
+---
+
+**PWA 有什么作用**
+
+**1. 离线访问**
+
+传统网页断网后就打不开。
+
+PWA 可以把核心资源缓存起来：
+
+```
+index.html
+app.js
+style.css
+logo.png
+```
+
+断网时仍然可以打开页面。
+
+比如文档类、工具类、后台系统的部分页面，就可以做到离线可用。
+
+---
+
+**2. 提升加载速度**
+
+通过 Service Worker 缓存静态资源。
+
+第一次访问：
+
+```
+从服务器下载资源并缓存
+```
+
+第二次访问：
+
+```
+直接从本地缓存读取
+```
+
+速度会明显提升。
+
+这对弱网环境很有帮助。
+
+---
+
+**3. 添加到桌面**
+
+通过 Manifest，用户可以把网页添加到手机桌面或电脑应用列表。
+
+打开时像 App 一样：
+
+```
+有图标
+有启动页
+可以全屏 / 独立窗口
+```
+
+不一定需要去应用商店下载安装。
+
+---
+
+**4. 消息推送**
+
+PWA 可以结合 Push API 做消息推送。
+
+比如：
+
+```
+订单提醒
+聊天消息
+活动通知
+待办提醒
+```
+
+即使用户没有打开页面，也可能收到通知。
+
+不过不同浏览器和系统支持程度不完全一样。
+
+---
+
+**5. 更接近原生 App 的体验**
+
+PWA 可以让 Web 应用具备：
+
+```
+离线能力
+桌面入口
+启动页
+全屏体验
+推送通知
+后台同步
+```
+
+所以它介于普通网页和原生 App 之间。
+
+---
+
+**PWA 适合什么场景**
+
+比较适合：
+
+- 新闻资讯
+- 文档站
+- 电商
+- 工具类网站
+- 低频使用但希望保留桌面入口的应用
+- 弱网环境下需要更好体验的业务
+- 内部系统的离线缓存部分能力
+
+不一定适合：
+
+- 强依赖原生能力的复杂 App
+- 对系统权限要求非常高的应用
+- 对 iOS 推送、后台能力要求特别强的场景
+
+---
+
+**PWA 和普通网页的区别**
+
+|对比项|普通网页|PWA|
+|---|---|---|
+|离线访问|通常不支持|可以支持|
+|添加桌面|体验有限|更像 App|
+|缓存控制|主要靠 HTTP 缓存|可用 Service Worker 精细控制|
+|消息推送|通常不支持|可支持|
+|加载速度|依赖网络|可读本地缓存|
+|安装成本|打开 URL|可添加到桌面，无需应用商店|
+
+---
+
+**Service Worker 的生命周期**
+
+这个面试可能会追问。
+
+大概有几个阶段：
+
+```
+register
+install
+activate
+fetch
+```
+
+示例：
+
+```
+self.addEventListener('install', event => {
+  console.log('install')
+})
+
+self.addEventListener('activate', event => {
+  console.log('activate')
+})
+
+self.addEventListener('fetch', event => {
+  console.log('fetch', event.request.url)
+})
+```
+
+含义：
+
+- `register`：页面注册 sw
+- `install`：安装阶段，通常缓存静态资源
+- `activate`：激活阶段，通常清理旧缓存
+- `fetch`：拦截页面请求
+
+---
+
+**PWA 的缺点**
+
+也要知道，不然回答会显得太理想化。
+
+常见问题：
+
+- 浏览器和系统支持程度不一致，尤其移动端差异明显
+- Service Worker 缓存策略写不好，可能导致用户一直看到旧版本
+- 调试成本比普通网页高
+- 推送通知权限容易被用户拒绝
+- 不能完全替代原生 App
+- 对 HTTPS 有要求
+
+尤其是缓存更新问题很常见。
+
+比如你缓存了旧的 `app.js`，如果没有设计好更新策略，用户可能上线后还在用旧代码。
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> PWA 是 Progressive Web App，渐进式 Web 应用。它不是某个框架，而是一组让 Web 应用接近原生 App 体验的技术方案，核心包括 HTTPS、Web App Manifest 和 Service Worker。Manifest 用来描述应用名称、图标、启动方式等，让网页可以添加到桌面；Service Worker 可以运行在浏览器后台，拦截请求并管理缓存，从而实现离线访问、资源缓存、消息推送等能力。
+> 
+> PWA 的主要作用是提升 Web 应用体验，比如弱网或离线环境下仍然可以访问核心页面，通过缓存提升二次加载速度，也可以添加到桌面，像 App 一样启动。它适合资讯、文档、工具、电商等场景。但它也有缺点，比如兼容性不完全一致，Service Worker 缓存策略复杂，处理不好可能导致用户拿到旧资源，所以实际项目中要设计好缓存更新机制。
