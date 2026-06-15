@@ -3998,3 +3998,554 @@ Access-Control-Allow-Origin: *
 > 只要不满足这些条件，就是复杂请求，比如使用 `PUT`、`DELETE`，或者带 `Authorization`、自定义请求头，或者 `Content-Type` 是 `application/json`。复杂请求在真正请求前，浏览器会先发送 `OPTIONS` 预检请求，询问服务器是否允许该来源、方法和请求头。预检通过后，浏览器才会发送真正请求。
 > 
 > 需要注意，简单请求只是不会触发预检，不代表不需要 CORS。无论简单还是复杂，服务器响应都必须带正确的 `Access-Control-Allow-Origin`，否则浏览器仍然会拦截响应。
+
+# Web性能优化
+
+Web 优化是个很大的话题，面试里不要只背技术名词，要能说清**为什么这样做、什么场景用、怎么量化效果**。
+
+可以从几个维度讲：**加载、渲染、代码、构建、网络、监控**。
+
+---
+
+**一、加载优化**
+
+**1. 减少资源体积**
+
+代码压缩：
+
+```
+JS / CSS / HTML 压缩
+去除注释、空格、多余换行
+```
+
+工具链一般会自动做，比如 Vite / Webpack 生产构建。
+
+图片优化：
+
+```
+使用 WebP / AVIF
+压缩图片
+雪碧图合并小图标
+懒加载非首屏图片
+```
+
+比如：
+
+```
+<img src="placeholder.jpg" data-src="real.jpg" loading="lazy">
+```
+
+浏览器原生 `loading="lazy"` 可以做懒加载。
+
+字体优化：
+
+```
+@font-face {
+  font-display: swap;
+}
+```
+
+避免字体加载阻塞渲染。
+
+---
+
+**2. 减少请求数量**
+
+合并资源：
+
+```
+CSS / JS 打包
+雪碧图
+内联关键 CSS
+```
+
+但注意不要过度合并，否则缓存失效时要重新下载整个大文件。
+
+HTTP/2 多路复用后，不一定要极端合并小文件。
+
+使用 CDN：
+
+```
+<script src="https://cdn.jsdelivr.net/npm/vue@3"></script>
+```
+
+CDN 可以：
+
+```
+离用户更近，延迟更低
+分担服务器压力
+通常有更好的缓存策略
+```
+
+---
+
+**3. 利用缓存**
+
+强缓存：
+
+```
+Cache-Control: max-age=31536000
+```
+
+适合不变的静态资源，比如打了 hash 的 JS / CSS。
+
+协商缓存：
+
+```
+ETag
+Last-Modified
+```
+
+资源变化时才重新下载。
+
+Service Worker 缓存：
+
+```
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request).then(response => {
+      return response || fetch(event.request)
+    })
+  )
+})
+```
+
+可以做离线访问、秒开页面。
+
+---
+
+**4. 预加载 / 预连接**
+
+```
+<link rel="preload" href="/critical.css" as="style">
+<link rel="prefetch" href="/next-page.js">
+<link rel="preconnect" href="https://api.example.com">
+<link rel="dns-prefetch" href="https://cdn.example.com">
+```
+
+`preload`：提前加载关键资源。
+
+`prefetch`：空闲时加载下一页资源。
+
+`preconnect`：提前建立连接。
+
+`dns-prefetch`：提前做 DNS 解析。
+
+---
+
+**二、渲染优化**
+
+**1. 减少回流和重绘**
+
+避免频繁读写布局：
+
+差：
+
+```
+items.forEach(item => {
+  item.style.width = '300px'
+  const height = item.offsetHeight
+  item.style.height = height + 20 + 'px'
+})
+```
+
+好：
+
+```
+const heights = items.map(item => item.offsetHeight)
+
+items.forEach((item, i) => {
+  item.style.width = '300px'
+  item.style.height = heights[i] + 20 + 'px'
+})
+```
+
+读写分离，避免 layout thrashing。
+
+批量修改 DOM：
+
+```
+const fragment = document.createDocumentFragment()
+
+for (let i = 0; i < 1000; i++) {
+  const li = document.createElement('li')
+  li.textContent = i
+  fragment.appendChild(li)
+}
+
+list.appendChild(fragment)
+```
+
+避免多次触发布局。
+
+---
+
+**2. 使用 transform / opacity 做动画**
+
+差：
+
+```
+@keyframes move {
+  to {
+    left: 100px;
+  }
+}
+```
+
+好：
+
+```
+@keyframes move {
+  to {
+    transform: translateX(100px);
+  }
+}
+```
+
+`transform` 和 `opacity` 通常只触发合成，不触发布局和绘制，性能更好。
+
+---
+
+**3. 虚拟列表**
+
+如果要渲染几千条数据：
+
+```
+只渲染可视区域的内容
+滚动时动态更新渲染内容
+```
+
+常用库：
+
+```
+react-window
+vue-virtual-scroller
+```
+
+比如电商商品列表、评论区、长表格。
+
+---
+
+**4. 避免长任务阻塞主线程**
+
+如果有大量计算：
+
+```
+for (let i = 0; i < 100000000; i++) {
+  // 复杂计算
+}
+```
+
+会阻塞页面。
+
+可以拆成小任务：
+
+```
+function processChunk(i, max) {
+  const end = Math.min(i + 1000, max)
+  for (let j = i; j < end; j++) {
+    // 处理
+  }
+  if (end < max) {
+    setTimeout(() => processChunk(end, max), 0)
+  }
+}
+
+processChunk(0, 100000000)
+```
+
+或者用 Web Worker：
+
+```
+const worker = new Worker('/worker.js')
+worker.postMessage(data)
+worker.onmessage = e => {
+  console.log(e.data)
+}
+```
+
+Worker 在独立线程执行，不阻塞主线程。
+
+---
+
+**三、代码层面优化**
+
+**1. Tree Shaking**
+
+只打包用到的代码。
+
+比如你写：
+
+```
+import { debounce } from 'lodash-es'
+```
+
+Webpack / Vite 会只打包 `debounce`，不会把整个 lodash 都打包进去。
+
+前提是模块是 ESM，并且生产环境开启压缩。
+
+---
+
+**2. 代码分割**
+
+把代码拆成多个小文件，按需加载。
+
+Vue Router：
+
+```
+const Home = () => import('./views/Home.vue')
+const About = () => import('./views/About.vue')
+
+const routes = [
+  { path: '/', component: Home },
+  { path: '/about', component: About }
+]
+```
+
+React Router：
+
+```
+const Home = lazy(() => import('./Home'))
+```
+
+这样首屏只加载当前路由代码，减少初始包体积。
+
+---
+
+**3. 防抖和节流**
+
+频繁触发的事件，比如 `scroll`、`resize`、`input`，做防抖或节流。
+
+防抖：
+
+```
+const debounce = (fn, delay) => {
+  let timer
+  return (...args) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => fn(...args), delay)
+  }
+}
+
+input.addEventListener('input', debounce(() => {
+  console.log('search')
+}, 300))
+```
+
+节流：
+
+```
+const throttle = (fn, delay) => {
+  let last = 0
+  return (...args) => {
+    const now = Date.now()
+    if (now - last >= delay) {
+      fn(...args)
+      last = now
+    }
+  }
+}
+
+window.addEventListener('scroll', throttle(() => {
+  console.log('scroll')
+}, 100))
+```
+
+---
+
+**4. 避免内存泄漏**
+
+常见泄漏场景：
+
+```
+// 忘记取消定时器
+const timer = setInterval(() => {}, 1000)
+
+// 忘记移除事件监听
+window.addEventListener('scroll', handler)
+
+// 闭包引用
+function leak() {
+  const bigData = new Array(1000000)
+  return () => {
+    console.log(bigData.length)
+  }
+}
+```
+
+Vue / React 组件卸载时要清理：
+
+```
+onUnmounted(() => {
+  clearInterval(timer)
+  window.removeEventListener('scroll', handler)
+})
+```
+
+---
+
+**四、构建优化**
+
+**1. 生产环境压缩**
+
+Vite / Webpack 默认会做：
+
+```
+JS 压缩：terser / esbuild
+CSS 压缩：cssnano
+HTML 压缩
+```
+
+确保生产构建时开启：
+
+```
+mode: 'production'
+```
+
+---
+
+**2. 分包策略**
+
+常见分包：
+
+```
+vendor：第三方库
+common：多个页面共用代码
+page：页面独有代码
+```
+
+Webpack 示例：
+
+```
+optimization: {
+  splitChunks: {
+    cacheGroups: {
+      vendor: {
+        test: /[\\/]node_modules[\\/]/,
+        name: 'vendor',
+        chunks: 'all'
+      }
+    }
+  }
+}
+```
+
+这样第三方库变化少，可以长期缓存。
+
+---
+
+**3. 开启 gzip / brotli**
+
+服务端开启压缩：
+
+```
+gzip on;
+gzip_types text/plain text/css application/json application/javascript;
+```
+
+响应头：
+
+```
+Content-Encoding: gzip
+```
+
+通常能减少 60%~80% 传输体积。
+
+---
+
+**五、网络优化**
+
+**1. HTTP/2**
+
+支持多路复用、头部压缩、服务端推送。
+
+配置 HTTPS + HTTP/2 可以明显提升并发资源加载速度。
+
+---
+
+**2. 减少重定向**
+
+比如：
+
+```
+http://example.com -> https://example.com -> https://www.example.com
+```
+
+每次重定向都多一次网络往返。
+
+尽量直接返回最终地址。
+
+---
+
+**3. 使用 CDN**
+
+静态资源放 CDN：
+
+```
+<script src="https://cdn.example.com/app.js"></script>
+```
+
+CDN 节点离用户近，延迟低。
+
+---
+
+**六、监控和分析**
+
+**1. 使用 Lighthouse**
+
+Chrome DevTools 里自带，可以分析：
+
+```
+Performance
+Accessibility
+Best Practices
+SEO
+```
+
+给出优化建议和评分。
+
+---
+
+**2. Performance API**
+
+```
+const timing = performance.timing
+
+const dns = timing.domainLookupEnd - timing.domainLookupStart
+const tcp = timing.connectEnd - timing.connectStart
+const ttfb = timing.responseStart - timing.requestStart
+const domReady = timing.domContentLoadedEventEnd - timing.fetchStart
+const load = timing.loadEventEnd - timing.fetchStart
+
+console.log({ dns, tcp, ttfb, domReady, load })
+```
+
+可以上报到监控平台，分析真实用户性能数据。
+
+---
+
+**3. 分析打包体积**
+
+Webpack 可以用：
+
+```
+npm install webpack-bundle-analyzer
+```
+
+Vite 可以用：
+
+```
+npm install rollup-plugin-visualizer
+```
+
+生成可视化报告，看哪个包体积大，针对性优化。
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> Web 优化主要从几个方面入手。加载优化包括压缩资源、懒加载图片、使用 CDN、合理配置缓存策略、preload 关键资源。渲染优化包括避免频繁读写布局、用 transform 和 opacity 做动画、长列表用虚拟滚动、大计算任务用 Web Worker。代码层面做 Tree Shaking、代码分割、防抖节流、避免内存泄漏。构建优化包括生产环境压缩、合理分包、开启 gzip。网络层可以用 HTTP/2、减少重定向、静态资源上 CDN。
+> 
+> 具体做优化时，通常先用 Lighthouse 或 Performance API 分析性能瓶颈，然后针对性优化，比如首屏慢就优化关键路径，包体积大就做代码分割和 Tree Shaking，列表卡顿就用虚拟列表。优化后再通过监控平台跟踪真实用户数据，形成闭环。
