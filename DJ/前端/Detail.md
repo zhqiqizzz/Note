@@ -4886,3 +4886,4 @@ self.addEventListener('fetch', event => {
 > PWA 是 Progressive Web App，渐进式 Web 应用。它不是某个框架，而是一组让 Web 应用接近原生 App 体验的技术方案，核心包括 HTTPS、Web App Manifest 和 Service Worker。Manifest 用来描述应用名称、图标、启动方式等，让网页可以添加到桌面；Service Worker 可以运行在浏览器后台，拦截请求并管理缓存，从而实现离线访问、资源缓存、消息推送等能力。
 > 
 > PWA 的主要作用是提升 Web 应用体验，比如弱网或离线环境下仍然可以访问核心页面，通过缓存提升二次加载速度，也可以添加到桌面，像 App 一样启动。它适合资讯、文档、工具、电商等场景。但它也有缺点，比如兼容性不完全一致，Service Worker 缓存策略复杂，处理不好可能导致用户拿到旧资源，所以实际项目中要设计好缓存更新机制。
+
