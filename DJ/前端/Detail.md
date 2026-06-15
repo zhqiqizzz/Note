@@ -4025,7 +4025,7 @@ JS / CSS / HTML 压缩
 ```
 使用 WebP / AVIF
 压缩图片
-雪碧图合并小图标
+雪碧图合并小图标(用SVG Sprite `<symbol>` + `<use>`)
 懒加载非首屏图片
 ```
 
