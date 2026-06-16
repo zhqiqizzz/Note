@@ -9431,4 +9431,3 @@ position + z-index
 > 
 > 伪类表示元素的状态或结构位置，比如 `:hover`、`:focus`、`:first-child`；伪元素表示元素的一部分或创建额外的虚拟元素，比如 `::before`、`::after`、`::first-line`。伪元素通常需要 `content` 才能显示。
 
-16:48
