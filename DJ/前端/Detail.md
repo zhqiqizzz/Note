@@ -7339,3 +7339,577 @@ hydrate 对比         → 虚拟 DOM 和真实 DOM 对比
 
 > CSR 里，浏览器解析空 HTML 后会先原生生成一个空的真实 DOM。然后 JS 下载完成后，Vue/React 执行组件 render 函数生成虚拟 DOM，再根据虚拟 DOM 调用 `document.createElement` 等浏览器 API 生成真实 DOM，最后插入页面渲染。  
 > SSR 里，服务端执行组件 render 生成虚拟 DOM，但服务端没有浏览器 DOM 环境，所以不会生成真实 DOM，而是把虚拟 DOM 序列化成 HTML 字符串返回给浏览器。浏览器解析这段 HTML，原生生成包含业务内容的真实 DOM，用户此时就能看到内容。然后客户端 JS 加载后再次执行 render 生成虚拟 DOM，进行 hydrate，把客户端虚拟 DOM 和已有真实 DOM 对比。如果一致，不重新创建真实 DOM，只复用并绑定事件；如果不一致，框架会修正真实 DOM。
+
+# CSS
+CSS 面试最怕“零散背概念”：BFC、盒模型、定位、flex、grid、层叠上下文、回流重绘，每个都听过，但一问就串不起来。
+
+我建议按 **“浏览器如何把 CSS 变成页面”** 这条主线来学。这样知识会成体系。
+
+**CSS 面试学习地图**
+
+1. CSS 基础机制  
+    选择器、优先级、继承、层叠、单位、盒模型。
+    
+2. 布局核心  
+    普通流、块级/行内格式化、margin 合并、BFC、浮动、定位、flex、grid。
+    
+3. 视觉与层叠  
+    z-index、层叠上下文、透明度、transform、伪类伪元素。
+    
+4. 响应式与适配  
+    rem、em、vw/vh、媒体查询、移动端适配、1px 问题。
+    
+5. 渲染与性能  
+    回流、重绘、合成、CSS 动画优化、transform/opacity。
+    
+6. 工程化 CSS  
+    scoped、CSS Modules、Sass/Less、Tailwind、命名规范、样式隔离。
+## CSS 基础机制
+
+**一、CSS 到底在做什么**
+
+HTML 负责结构：
+
+```
+<div class="card">
+  <h2>标题</h2>
+  <p>内容</p>
+</div>
+```
+
+CSS 负责描述这些结构应该如何显示：
+
+```
+.card {
+  width: 300px;
+  padding: 16px;
+  background: white;
+}
+```
+
+浏览器会把 HTML 解析成 DOM，把 CSS 解析成 CSSOM，然后结合起来生成渲染树，再布局、绘制、合成。
+
+所以 CSS 的核心问题其实是：
+
+> 哪些元素应用哪些样式？这些样式如何计算？盒子如何布局？最后如何绘制？
+
+---
+
+**二、选择器和优先级**
+
+CSS 选择器用来找到元素。
+
+常见选择器：
+
+```
+div {}              /* 标签选择器 */
+.card {}            /* 类选择器 */
+#app {}             /* id 选择器 */
+.card p {}          /* 后代选择器 */
+.card > p {}        /* 子代选择器 */
+button:hover {}     /* 伪类 */
+.box::before {}     /* 伪元素 */
+```
+
+面试重点不是背所有选择器，而是要懂 **优先级**。
+
+优先级大致是：
+
+```
+!important
+内联样式 style
+ID 选择器
+类选择器 / 属性选择器 / 伪类
+标签选择器 / 伪元素
+通配符 / 继承
+```
+
+比如：
+
+```
+<div id="box" class="box" style="color: green;">Hello</div>
+```
+
+```
+#box {
+  color: red;
+}
+
+.box {
+  color: blue;
+}
+```
+
+最终是：
+
+```
+green
+```
+
+因为内联样式优先级更高。
+
+如果没有内联：
+
+```
+#box {
+  color: red;
+}
+
+.box {
+  color: blue;
+}
+```
+
+最终是：
+
+```
+red
+```
+
+因为 ID 优先级高于 class。
+
+---
+
+**三、优先级怎么算**
+
+可以简单记成四元组：
+
+```
+!important > 内联 > ID > 类/伪类/属性 > 标签/伪元素
+```
+
+例如：
+
+```
+#app .box p {
+  color: red;
+}
+```
+
+包含：
+
+```
+1 个 ID
+1 个 class
+1 个标签
+```
+
+```
+.card .box p {
+  color: blue;
+}
+```
+
+包含：
+
+```
+0 个 ID
+2 个 class
+1 个标签
+```
+
+虽然第二个 class 更多，但第一个有 ID，所以第一个优先级更高。
+
+如果优先级一样，后面的覆盖前面的：
+
+```
+.box {
+  color: red;
+}
+
+.box {
+  color: blue;
+}
+```
+
+最终是：
+
+```
+blue
+```
+
+这叫层叠。
+
+---
+
+**四、继承**
+
+有些 CSS 属性会从父元素继承到子元素。
+
+比如：
+
+```
+body {
+  color: #333;
+  font-size: 16px;
+}
+```
+
+子元素里的文字默认也会继承这些样式。
+
+常见可继承属性：
+
+```
+color
+font-size
+font-family
+font-weight
+line-height
+text-align
+visibility
+```
+
+常见不可继承属性：
+
+```
+width
+height
+margin
+padding
+border
+background
+position
+display
+```
+
+比如：
+
+```
+.parent {
+  color: red;
+  margin: 20px;
+}
+```
+
+子元素会继承 `color`，但不会继承 `margin`。
+
+面试里可以这样说：
+
+> CSS 中和文本、字体相关的属性通常可以继承，和盒模型、布局相关的属性通常不继承。
+
+---
+
+**五、层叠 Cascade**
+
+CSS 全名是 Cascading Style Sheets，里面的 cascading 就是层叠。
+
+当多个规则作用到同一个元素时，浏览器按这些因素决定最终样式：
+
+```
+来源
+重要性
+优先级
+书写顺序
+```
+
+比如：
+
+```
+p {
+  color: red;
+}
+
+.text {
+  color: blue;
+}
+```
+
+```
+<p class="text">hello</p>
+```
+
+最终是蓝色，因为 class 优先级更高。
+
+再比如：
+
+```
+.text {
+  color: red;
+}
+
+.text {
+  color: blue;
+}
+```
+
+最终是蓝色，因为优先级一样时，后写的生效。
+
+---
+
+**六、盒模型**
+
+这是 CSS 面试核心中的核心。
+
+一个元素盒子由四部分组成：
+
+```
+content
+padding
+border
+margin
+```
+
+从里到外：
+
+```
+content box
+padding box
+border box
+margin box
+```
+
+CSS：
+
+```
+.box {
+  width: 200px;
+  padding: 20px;
+  border: 10px solid #000;
+  margin: 30px;
+}
+```
+
+默认标准盒模型下：
+
+```
+content width = 200px
+实际占据宽度 = 200 + 20*2 + 10*2 + 30*2
+```
+
+注意：
+
+```
+width 只表示 content 的宽度
+```
+
+---
+
+**七、标准盒模型和 IE 盒模型**
+
+标准盒模型：
+
+```
+box-sizing: content-box;
+```
+
+此时：
+
+```
+元素总宽度 = width + padding + border
+```
+
+例如：
+
+```
+.box {
+  width: 200px;
+  padding: 20px;
+  border: 10px solid black;
+}
+```
+
+实际 border box 宽度：
+
+```
+200 + 40 + 20 = 260px
+```
+
+IE 盒模型，也就是 border-box：
+
+```
+box-sizing: border-box;
+```
+
+此时：
+
+```
+元素总宽度 = width
+content 宽度 = width - padding - border
+```
+
+同样代码：
+
+```
+.box {
+  box-sizing: border-box;
+  width: 200px;
+  padding: 20px;
+  border: 10px solid black;
+}
+```
+
+实际 border box 宽度就是：
+
+```
+200px
+```
+
+content 宽度是：
+
+```
+200 - 40 - 20 = 140px
+```
+
+实际项目里通常会全局设置：
+
+```
+* {
+  box-sizing: border-box;
+}
+```
+
+这样布局更直观。
+
+---
+
+**八、display 的基础分类**
+
+CSS 布局里要先分清元素盒子类型。
+
+常见：
+
+```
+display: block;
+display: inline;
+display: inline-block;
+display: flex;
+display: grid;
+display: none;
+```
+
+**block 块级元素**
+
+特点：
+
+```
+独占一行
+默认宽度撑满父容器
+可以设置 width / height
+```
+
+比如：
+
+```
+<div></div>
+<p></p>
+<h1></h1>
+```
+
+---
+
+**inline 行内元素**
+
+特点：
+
+```
+不会独占一行
+宽高由内容决定
+设置 width / height 通常无效
+垂直方向 margin / padding 对布局影响有限
+```
+
+比如：
+
+```
+<span></span>
+<a></a>
+<strong></strong>
+```
+
+---
+
+**inline-block**
+
+特点：
+
+```
+不独占一行
+可以设置 width / height
+像行内元素一样排列
+```
+
+比如图标、按钮以前常用：
+
+```
+.icon {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+}
+```
+
+---
+
+**display: none**
+
+元素不显示，也不占据空间。
+
+会影响布局，所以会触发回流。
+
+区别于：
+
+```
+visibility: hidden;
+```
+
+`visibility: hidden` 是看不见，但仍然占位置，通常只触发重绘。
+
+---
+
+**九、普通流 Normal Flow**
+
+默认情况下，元素按照普通流布局。
+
+块级元素：
+
+```
+从上到下排列
+每个块独占一行
+```
+
+行内元素：
+
+```
+从左到右排列
+一行放不下会换行
+```
+
+比如：
+
+```
+<div>块1</div>
+<div>块2</div>
+<span>行内1</span>
+<span>行内2</span>
+```
+
+效果大致：
+
+```
+块1
+块2
+行内1 行内2
+```
+
+后面讲 BFC、浮动、定位、flex，其实都是在讨论：
+
+> 元素如何脱离或改变普通流的布局规则。
+
+---
+
+**十、这一阶段面试怎么答**
+
+如果面试官问：**你怎么理解 CSS 盒模型？**
+
+可以答：
+
+> CSS 盒模型描述的是元素在页面中占据空间的方式，一个盒子由 content、padding、border、margin 组成。标准盒模型下，`width` 只表示 content 宽度，元素实际宽度还要加上 padding 和 border；而 `box-sizing: border-box` 下，`width` 表示 content + padding + border 的总宽度。实际项目中通常会全局设置 `box-sizing: border-box`，这样布局计算更直观。
+
+如果问：**CSS 优先级怎么计算？**
+
+可以答：
+
+> CSS 优先级主要看选择器权重，`!important` 最高，其次是内联样式、ID 选择器、类选择器/属性选择器/伪类、标签选择器/伪元素。多个规则作用到同一个元素时，先比较优先级，优先级相同则后写的覆盖先写的。另外有些属性会继承，比如字体和文本相关属性；布局和盒模型相关属性通常不会继承。
+
+我们下一步建议进入 CSS 面试最核心的一块：**BFC、margin 合并、浮动清除、块格式化上下文**。这块打通后，很多 CSS 老题会突然变清楚。
+
