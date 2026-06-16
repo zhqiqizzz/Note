@@ -7017,3 +7017,325 @@ mounted() {
 > SSR 的流程是浏览器请求 HTML，服务端接收请求后根据路由匹配组件，在服务端执行组件的数据获取逻辑，比如调用接口，拿到数据后把组件和数据一起渲染成完整 HTML 字符串，并把数据序列化注入到 `window.__INITIAL_STATE__`，返回给浏览器。浏览器解析 HTML 后用户就能看到完整内容，但这时还不能交互。接着浏览器下载客户端 JS，JS 执行后进行 hydration，也就是在已有 DOM 上绑定事件、恢复状态、接管交互，不会重新创建 DOM。hydrate 完成后页面可交互。
 > 
 > 所以 SSR 的关键是服务端先渲染出有内容的 HTML，让用户更快看到首屏，客户端 JS 再通过 hydrate 接管页面，保留前端框架的交互能力。SSR 首屏快、SEO 好，但服务端压力大，需要处理数据获取、HTML 生成、hydration mismatch 等问题。
+
+# 虚拟dom
+**虚拟 DOM 是什么**
+
+虚拟 DOM 是 JS 对象，不是真实 DOM 节点。
+
+Vue / React 组件的 render 函数执行后，会生成类似这样的结构：
+
+```
+{
+  type: 'div',
+  props: { class: 'product' },
+  children: [
+    {
+      type: 'h1',
+      props: {},
+      children: ['iPhone 15 Pro']
+    },
+    {
+      type: 'button',
+      props: { class: 'btn' },
+      children: ['加入购物车']
+    }
+  ]
+}
+```
+
+它只是描述页面应该长什么样的数据结构，存在内存里。
+
+**真实 DOM 是什么**
+
+真实 DOM 是浏览器里实际的节点对象：
+
+```
+document.createElement('div')
+document.querySelector('.product')
+```
+
+是浏览器提供的原生对象，操作它会影响页面视觉。
+
+---
+
+**一、CSR 每一步涉及什么**
+
+```
+浏览器请求 HTML
+```
+
+```
+服务端返回空 HTML
+```
+
+```
+<div id="app"></div>
+<script src="/app.js"></script>
+```
+
+```
+浏览器解析 HTML
+```
+
+这一步浏览器原生工作，**生成真实 DOM**。
+
+此时真实 DOM 里只有：
+
+```
+document.body
+  └─ div#app（空的）
+  └─ script
+```
+
+没有业务内容，没有虚拟 DOM，什么都没有。
+
+---
+
+```
+下载并执行 app.js
+```
+
+JS 里有 Vue / React 框架代码和业务组件。
+
+执行 `createApp(App).mount('#app')` 后：
+
+**第一步：生成虚拟 DOM**
+
+Vue 执行 App 组件的 render 函数，生成虚拟 DOM 树：
+
+```
+// 虚拟 DOM，存在内存里
+{
+  type: 'div',
+  props: { class: 'product' },
+  children: [
+    { type: 'h1', children: ['iPhone 15 Pro'] },
+    { type: 'button', children: ['加入购物车'] }
+  ]
+}
+```
+
+**第二步：生成真实 DOM**
+
+Vue 根据虚拟 DOM，调用浏览器 API 创建真实 DOM：
+
+```
+const div = document.createElement('div')
+div.className = 'product'
+
+const h1 = document.createElement('h1')
+h1.textContent = 'iPhone 15 Pro'
+
+const btn = document.createElement('button')
+btn.textContent = '加入购物车'
+
+div.appendChild(h1)
+div.appendChild(btn)
+
+document.querySelector('#app').appendChild(div)
+```
+
+**第三步：挂载到页面**
+
+真实 DOM 插入到 `<div id="app">` 里，浏览器渲染出页面。
+
+---
+
+**CSR 里 DOM 生成总结**
+
+```
+解析 HTML          → 浏览器原生生成真实 DOM（只有空 #app）
+JS 执行 render     → Vue/React 生成虚拟 DOM
+框架 patch/commit  → Vue/React 根据虚拟 DOM 生成真实 DOM
+真实 DOM 插入页面  → 浏览器渲染，用户看到内容
+```
+
+所以 CSR 里，虚拟 DOM 先生成，再用它指导创建真实 DOM。
+
+---
+
+**二、SSR 每一步涉及什么**
+
+SSR 有两个阶段：**服务端**和**客户端**，要分开看。
+
+---
+
+**服务端阶段**
+
+```
+服务端接收请求，执行 Vue/React 组件
+```
+
+**第一步：服务端生成虚拟 DOM**
+
+服务端执行 Vue / React 组件的 render 函数，**同样会生成虚拟 DOM**：
+
+```
+// 服务端内存里的虚拟 DOM
+{
+  type: 'div',
+  props: { class: 'product' },
+  children: [
+    { type: 'h1', children: ['iPhone 15 Pro'] },
+    { type: 'button', children: ['加入购物车'] }
+  ]
+}
+```
+
+注意：
+
+> 服务端没有浏览器，没有真实 DOM，不能调用 `document.createElement`。
+
+**第二步：虚拟 DOM 序列化成 HTML 字符串**
+
+Vue 的 `renderToString` 方法把虚拟 DOM 转成 HTML 字符串：
+
+```
+const html = await renderToString(app)
+```
+
+得到：
+
+```
+<div class="product" data-v-app="">
+  <h1>iPhone 15 Pro</h1>
+  <button class="btn">加入购物车</button>
+</div>
+```
+
+注意：
+
+> 服务端没有生成真实 DOM，只是虚拟 DOM → HTML 字符串。
+
+**第三步：服务端返回完整 HTML**
+
+服务端把这段字符串嵌入 HTML 模板：
+
+```
+<div id="app">
+  <div class="product">
+    <h1>iPhone 15 Pro</h1>
+    <button class="btn">加入购物车</button>
+  </div>
+</div>
+<script>
+  window.__INITIAL_STATE__ = { product: { name: 'iPhone 15 Pro', price: 7999 } }
+</script>
+<script src="/app.js"></script>
+```
+
+返回给浏览器。
+
+---
+
+**客户端阶段**
+
+```
+浏览器收到 HTML，开始解析
+```
+
+**第一步：浏览器原生生成真实 DOM**
+
+浏览器解析服务端返回的 HTML，生成真实 DOM 树：
+
+```
+document.body
+  └─ div#app
+       └─ div.product
+            ├─ h1（iPhone 15 Pro）
+            └─ button（加入购物车）
+```
+
+这是浏览器自己原生做的，和框架无关。
+
+用户此时已经能看到内容，因为真实 DOM 已经建好了。
+
+---
+
+```
+下载并执行 app.js
+```
+
+**第二步：客户端生成虚拟 DOM**
+
+Vue 执行同一套组件代码，加上 `window.__INITIAL_STATE__` 里的数据，再次运行 render 函数，生成虚拟 DOM：
+
+```
+// 客户端内存里的虚拟 DOM
+{
+  type: 'div',
+  props: { class: 'product' },
+  children: [
+    { type: 'h1', children: ['iPhone 15 Pro'] },
+    { type: 'button', children: ['加入购物车'] }
+  ]
+}
+```
+
+**第三步：hydrate，对比虚拟 DOM 和真实 DOM**
+
+`hydrate` 会做一件事：
+
+> 把客户端生成的虚拟 DOM，和浏览器已经存在的真实 DOM 做对比。
+
+如果一致，不会重新创建真实 DOM，而是：
+
+```
+button.addEventListener('click', addToCart)
+```
+
+直接复用已有真实 DOM，只绑定事件。
+
+如果不一致，会产生 hydration mismatch，框架可能会重新修正真实 DOM。
+
+---
+
+**SSR 里 DOM 生成总结**
+
+```
+服务端执行 render    → 生成虚拟 DOM（服务端内存，无真实 DOM）
+虚拟 DOM 序列化      → 生成 HTML 字符串（不是真实 DOM）
+浏览器解析 HTML      → 浏览器原生生成真实 DOM（不经过框架）
+客户端执行 render    → 再次生成虚拟 DOM（客户端内存）
+hydrate 对比         → 虚拟 DOM 和真实 DOM 对比
+一致则复用           → 不重新生成真实 DOM，只绑定事件
+不一致则修正         → 框架修改真实 DOM
+```
+
+---
+
+**三、完整对比**
+
+| 阶段 | CSR | SSR |  
+|---|  
+| 服务端 | 不执行组件，不生成虚拟 DOM | 执行组件，生成虚拟 DOM |  
+| 服务端真实 DOM | 无（服务端没有 DOM） |  
+| 服务端产出 | 空 HTML 字符串 | 含内容的 HTML 字符串 |  
+| 浏览器解析 HTML | 生成空真实 DOM | 生成有内容的真实 DOM |  
+| 框架执行 render | 生成虚拟 DOM | 生成虚拟 DOM |  
+| 框架创建真实 DOM | 根据虚拟 DOM 创建新的真实 DOM | 不重新创建，hydrate 复用 |  
+| 事件绑定 | render 后自动绑定 | hydrate 后绑定 |
+
+---
+
+**四、为什么 SSR 要在客户端再生成一次虚拟 DOM**
+
+因为 Vue / React 内部的响应式系统和事件系统是基于虚拟 DOM 工作的。
+
+客户端如果没有虚拟 DOM：
+
+- 响应式数据变化后不知道该更新哪里
+- 事件处理找不到对应节点
+- 组件生命周期无法运行
+
+所以客户端必须重新运行 render 生成虚拟 DOM，建立好组件实例、响应式系统、事件处理，才能接管页面后续的交互。
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> CSR 里，浏览器解析空 HTML 后会先原生生成一个空的真实 DOM。然后 JS 下载完成后，Vue/React 执行组件 render 函数生成虚拟 DOM，再根据虚拟 DOM 调用 `document.createElement` 等浏览器 API 生成真实 DOM，最后插入页面渲染。  
+> SSR 里，服务端执行组件 render 生成虚拟 DOM，但服务端没有浏览器 DOM 环境，所以不会生成真实 DOM，而是把虚拟 DOM 序列化成 HTML 字符串返回给浏览器。浏览器解析这段 HTML，原生生成包含业务内容的真实 DOM，用户此时就能看到内容。然后客户端 JS 加载后再次执行 render 生成虚拟 DOM，进行 hydrate，把客户端虚拟 DOM 和已有真实 DOM 对比。如果一致，不重新创建真实 DOM，只复用并绑定事件；如果不一致，框架会修正真实 DOM。
