@@ -6389,3 +6389,631 @@ button.addEventListener('click', addToCart)
 > SSG 是静态站点生成，它在构建阶段提前把页面生成成 HTML，访问时直接返回静态文件，所以速度快、CDN 友好、SEO 好，但数据更新不够实时，适合博客、文档、官网这类内容稳定的场景。
 > 
 > 同构渲染强调同一套代码同时运行在服务端和客户端。服务端先用这套代码生成 HTML，客户端加载 JS 后再进行 hydration，在已有 HTML 上绑定事件并接管交互。SSR 更强调渲染发生在服务端，同构更强调代码复用和客户端接管。
+
+
+**CSR 完整流程**
+
+假设你访问一个 Vue SPA：
+
+```
+https://app.example.com
+```
+
+---
+
+**1. 浏览器请求 HTML**
+
+浏览器发起请求：
+
+```
+GET / HTTP/1.1
+Host: app.example.com
+```
+
+服务器返回一个很轻的 HTML：
+
+```
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>App</title>
+  <link rel="icon" href="/favicon.ico">
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>
+```
+
+注意这个 HTML 几乎没有实际业务内容。
+
+只有：
+
+```
+<div id="app"></div>
+```
+
+页面主体是空的。
+
+---
+
+**2. 浏览器解析 HTML**
+
+浏览器收到 HTML 后开始解析。
+
+遇到：
+
+```
+<div id="app"></div>
+```
+
+会先创建一个空 DOM 节点。
+
+然后遇到：
+
+```
+<script type="module" src="/assets/app.js"></script>
+```
+
+浏览器会：
+
+- 发起请求下载 `app.js`
+- 如果有缓存，可能从缓存读
+- 如果是 `type="module"`，默认行为类似 `defer`，不会阻塞 HTML 解析
+
+这时页面上看到的只是一个空白页面，或者 loading 占位符。
+
+---
+
+**3. 下载 JS**
+
+浏览器请求：
+
+```
+GET /assets/app.js
+```
+
+服务器返回打包后的 JS，可能几百 KB 到几 MB。
+
+这个文件通常包括：
+
+```
+Vue / React 框架代码
+业务组件代码
+路由代码
+状态管理
+工具库
+```
+
+如果是生产环境，通常还会代码分割：
+
+```
+app.js：主包
+vendor.js：第三方库
+chunk-xxx.js：按需加载的模块
+```
+
+浏览器下载这些 JS 需要时间。
+
+如果网络慢，下载可能要几秒。
+
+---
+
+**4. 执行 JS**
+
+JS 下载完成后，浏览器开始执行。
+
+执行过程中会：
+
+```
+import { createApp } from 'vue'
+import App from './App.vue'
+import router from './router'
+import store from './store'
+
+const app = createApp(App)
+app.use(router)
+app.use(store)
+app.mount('#app')
+```
+
+这时 Vue 开始工作：
+
+- 初始化路由
+- 解析当前 URL 路径
+- 匹配对应组件
+- 如果组件需要数据，发起接口请求
+
+---
+
+**5. 请求接口数据**
+
+通常前端组件会在生命周期里请求接口：
+
+```
+async created() {
+  const res = await fetch('/api/user')
+  this.user = await res.json()
+}
+```
+
+或者 React：
+
+```
+useEffect(() => {
+  fetch('/api/user')
+    .then(res => res.json())
+    .then(data => setUser(data))
+}, [])
+```
+
+这又是一轮网络请求。
+
+如果接口慢，页面可能继续 loading。
+
+---
+
+**6. 生成 DOM 并渲染**
+
+接口返回后，前端框架根据数据生成 DOM：
+
+```
+render() {
+  return <div>{user.name}</div>
+}
+```
+
+浏览器进行布局、绘制、合成，用户才能看到实际内容。
+
+---
+
+**CSR 时间线总结**
+
+```
+t0：用户输入 URL
+  ↓
+t1：浏览器请求 HTML
+  ↓
+t2：HTML 返回，开始解析（内容为空）
+  ↓
+t3：浏览器请求 app.js
+  ↓
+t4：app.js 下载完成
+  ↓
+t5：浏览器执行 JS，框架初始化
+  ↓
+t6：前端发起接口请求
+  ↓
+t7：接口返回数据
+  ↓
+t8：前端生成 DOM
+  ↓
+t9：浏览器渲染，用户看到内容
+  ↓
+t10：JS 继续执行，页面可交互
+```
+
+关键问题是：
+
+> 用户要等到 t9 才能看到实际内容。
+
+在这之前看到的可能是：
+
+```
+白屏
+loading 动画
+骨架屏
+```
+
+---
+
+**SSR 完整流程**
+
+现在看 SSR，假设用 Nuxt / Next.js。
+
+访问：
+
+```
+https://app.example.com/product/123
+```
+
+---
+
+**1. 浏览器请求 HTML**
+
+```
+GET /product/123 HTTP/1.1
+Host: app.example.com
+```
+
+---
+
+**2. 服务端接收请求**
+
+Node 服务器收到请求后：
+
+- 解析路由，知道用户访问的是商品详情页
+- 执行对应页面组件的服务端逻辑
+
+比如 Nuxt 里：
+
+```
+export default {
+  async asyncData({ params }) {
+    const res = await fetch(`https://api.example.com/product/${params.id}`)
+    const product = await res.json()
+    return { product }
+  }
+}
+```
+
+服务端在这里已经请求接口，拿到数据。
+
+---
+
+**3. 服务端生成 HTML**
+
+服务端把 Vue 组件和数据结合，渲染成 HTML 字符串。
+
+类似：
+
+```
+const html = renderToString(App, { product })
+```
+
+生成的 HTML 大概是：
+
+```
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>商品详情</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <div id="app">
+    <div class="product">
+      <h1>iPhone 15 Pro</h1>
+      <p class="price">¥7999</p>
+      <button class="btn">加入购物车</button>
+    </div>
+  </div>
+
+  <script>
+    window.__INITIAL_STATE__ = {
+      product: {
+        name: 'iPhone 15 Pro',
+        price: 7999
+      }
+    }
+  </script>
+
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>
+```
+
+注意：
+
+- HTML 已经包含实际业务内容
+- 服务端把数据注入到 `window.__INITIAL_STATE__`
+- 依然引入了客户端 JS
+
+---
+
+**4. 服务器返回 HTML**
+
+服务器把这个完整 HTML 返回给浏览器。
+
+---
+
+**5. 浏览器解析 HTML**
+
+浏览器收到 HTML 后：
+
+```
+解析 HTML
+  ↓
+创建 DOM 树
+  ↓
+用户已经可以看到内容
+```
+
+这时页面上已经有：
+
+```
+<h1>iPhone 15 Pro</h1>
+<p class="price">¥7999</p>
+<button class="btn">加入购物车</button>
+```
+
+用户能看到完整内容，但还不能交互。
+
+点击按钮可能没反应，因为事件还没绑定。
+
+---
+
+**6. 下载 JS**
+
+浏览器继续解析到：
+
+```
+<script type="module" src="/assets/app.js"></script>
+```
+
+开始下载客户端 JS。
+
+这个 JS 和 CSR 的 JS 基本一样，包含 Vue / React 框架和业务代码。
+
+---
+
+**7. 执行 JS 并 hydrate**
+
+JS 下载完成后，浏览器执行。
+
+但这时和 CSR 不同：
+
+CSR 是：
+
+```
+createApp(App).mount('#app')
+```
+
+直接在空 `<div>` 里创建 DOM。
+
+SSR 是：
+
+```
+createApp(App).hydrate('#app')
+```
+
+或者 React：
+
+```
+hydrateRoot(document.getElementById('app'), <App />)
+```
+
+它不会重新创建 DOM，而是：
+
+- 检查服务端渲染的 HTML
+- 把 Vue / React 组件实例和已有 DOM 关联起来
+- 绑定事件监听器
+- 恢复状态
+
+比如：
+
+```
+<button class="btn">加入购物车</button>
+```
+
+hydrate 后变成：
+
+```
+<button class="btn" @click="addToCart">加入购物车</button>
+```
+
+这个过程叫 hydration / 水合。
+
+---
+
+**8. 页面可交互**
+
+hydrate 完成后，页面变成可交互状态。
+
+用户点击按钮，事件触发，可以正常操作了。
+
+---
+
+**SSR 时间线总结**
+
+```
+t0：用户输入 URL
+  ↓
+t1：浏览器请求 HTML
+  ↓
+t2：服务端接收请求
+  ↓
+t3：服务端请求接口数据
+  ↓
+t4：服务端生成完整 HTML
+  ↓
+t5：HTML 返回浏览器
+  ↓
+t6：浏览器解析 HTML，用户看到内容（但不能交互）
+  ↓
+t7：浏览器请求 app.js
+  ↓
+t8：app.js 下载完成
+  ↓
+t9：浏览器执行 JS，进行 hydrate
+  ↓
+t10：页面可交互
+```
+
+关键区别：
+
+> 用户在 t6 就能看到内容了，而不是等到 JS 执行后。
+
+---
+
+**对比 CSR 和 SSR 的关键节点**
+
+|对比项|CSR|SSR|
+|---|---|---|
+|HTML 返回时内容|空，只有 `<div id="app"></div>`|完整内容，包括业务数据|
+|用户何时看到内容|JS 执行后，接口请求返回后|HTML 解析后立刻可见|
+|接口在哪里请求|浏览器|服务端|
+|首屏速度|慢，要等 JS + 接口|快，HTML 直接有内容|
+|JS 的作用|创建 DOM 并绑定事件|hydrate，复用 DOM 并绑定事件|
+|SEO|差，爬虫看到的是空 HTML|好，爬虫能拿到完整 HTML|
+
+---
+
+**hydrate 过程细节**
+
+这个是 SSR 的核心。
+
+服务端渲染出来的 HTML：
+
+```
+<div id="app">
+  <h1>iPhone 15 Pro</h1>
+  <button class="btn">加入购物车</button>
+</div>
+```
+
+客户端 JS 加载后，会执行类似：
+
+```
+const app = createApp(App)
+app.hydrate('#app')
+```
+
+框架会：
+
+1. 根据服务端注入的初始状态恢复数据：
+
+```
+const initialState = window.__INITIAL_STATE__
+```
+
+2. 遍历已有 DOM 节点
+    
+3. 把 Vue / React 组件实例和对应 DOM 节点关联
+    
+4. 绑定事件：
+    
+
+```
+button.addEventListener('click', addToCart)
+```
+
+5. 激活响应式系统
+
+如果服务端渲染和客户端第一次渲染不一致，就会报错：
+
+```
+Hydration mismatch
+```
+
+比如服务端生成：
+
+```
+<div>登录</div>
+```
+
+客户端 hydrate 时发现应该是：
+
+```
+<div>用户名：Tom</div>
+```
+
+框架会警告或直接用客户端重新渲染。
+
+常见原因：
+
+- 服务端和客户端获取的数据不一致
+- 使用了浏览器专属 API，比如 `window.innerWidth`
+- 使用了随机数、时间戳等不确定因素
+
+---
+
+**为什么 SSR 还要下载 JS**
+
+你可能会问：
+
+> SSR 既然服务端已经生成了完整 HTML，为什么客户端还要下载 JS？
+
+因为 HTML 只是静态结构，没有交互能力。
+
+比如：
+
+```
+<button>加入购物车</button>
+```
+
+这只是一个按钮，没有绑定事件。
+
+点击没反应。
+
+客户端 JS 加载后，才会：
+
+```
+button.addEventListener('click', addToCart)
+```
+
+所以 SSR 的目标是：
+
+```
+用户尽快看到内容（通过服务端生成 HTML）
+同时保留前端框架的交互能力（通过客户端 hydrate）
+```
+
+这就是为什么 SSR 需要同构：
+
+```
+同一套代码先在服务端渲染
+再在客户端接管
+```
+
+---
+
+**SSR 如何处理动态数据**
+
+如果商品价格经常变，SSR 怎么办？
+
+常见策略：
+
+**1. 每次请求都生成最新 HTML**
+
+```
+export default {
+  async asyncData({ params }) {
+    const product = await fetchProduct(params.id)
+    return { product }
+  }
+}
+```
+
+每次用户访问，服务端实时请求接口。
+
+缺点是服务端压力大。
+
+**2. 配合缓存**
+
+可以在 Node 服务或 CDN 层做缓存：
+
+```
+cache.set(`product:${id}`, html, 60) // 缓存 60 秒
+```
+
+用户访问时先看缓存，减轻服务端压力。
+
+**3. 部分 SSR + 部分 CSR**
+
+首屏关键内容走 SSR。
+
+不太重要、变化频繁的部分，客户端再请求：
+
+```
+mounted() {
+  this.fetchComments()
+}
+```
+
+比如商品详情走 SSR，评论列表走客户端动态加载。
+
+---
+
+**面试版完整回答**
+
+可以这样说：
+
+> CSR 的流程是浏览器请求 HTML，服务端返回一个几乎空的 HTML 和 script 标签，浏览器解析后开始下载 JS，JS 下载完成后执行框架初始化，前端再发起接口请求获取数据，数据返回后生成 DOM 并渲染，用户才能看到实际内容。所以 CSR 的首屏慢，SEO 差，但前后端分离清晰，页面切换体验好。
+> 
+> SSR 的流程是浏览器请求 HTML，服务端接收请求后根据路由匹配组件，在服务端执行组件的数据获取逻辑，比如调用接口，拿到数据后把组件和数据一起渲染成完整 HTML 字符串，并把数据序列化注入到 `window.__INITIAL_STATE__`，返回给浏览器。浏览器解析 HTML 后用户就能看到完整内容，但这时还不能交互。接着浏览器下载客户端 JS，JS 执行后进行 hydration，也就是在已有 DOM 上绑定事件、恢复状态、接管交互，不会重新创建 DOM。hydrate 完成后页面可交互。
+> 
+> 所以 SSR 的关键是服务端先渲染出有内容的 HTML，让用户更快看到首屏，客户端 JS 再通过 hydrate 接管页面，保留前端框架的交互能力。SSR 首屏快、SEO 好，但服务端压力大，需要处理数据获取、HTML 生成、hydration mismatch 等问题。
