@@ -6390,7 +6390,7 @@ button.addEventListener('click', addToCart)
 > 
 > 同构渲染强调同一套代码同时运行在服务端和客户端。服务端先用这套代码生成 HTML，客户端加载 JS 后再进行 hydration，在已有 HTML 上绑定事件并接管交互。SSR 更强调渲染发生在服务端，同构更强调代码复用和客户端接管。
 
-# csr
+# CSR和SSR具体流程
 **CSR 完整流程**
 
 假设你访问一个 Vue SPA：
