@@ -8782,3 +8782,653 @@ Grid 是二维布局：
 > 浮动最初用于文字环绕，会让元素脱离普通流，但仍影响后面的行内内容，因此可能导致父元素高度塌陷，通常用 `display: flow-root` 或 clearfix 清除浮动。定位里，`relative` 不脱离文档流，偏移后原位置保留；`absolute` 脱离文档流，相对于最近的非 static 定位祖先定位；`fixed` 相对视口固定；`sticky` 是普通流和固定定位的结合。
 > 
 > Flex 是一维布局，适合一行或一列的对齐和分配空间；Grid 是二维布局，适合同时控制行和列，比如页面结构和卡片网格。面试时可以总结为：一维布局优先 Flex，二维布局优先 Grid。
+
+## 视觉与层叠
+
+这一块面试经常看你有没有真正理解“为什么 z-index 不生效”“为什么元素盖不住别人”“transform 为什么会影响 fixed/absolute”“伪类和伪元素区别”。
+
+主线是：
+
+> 元素不只是二维排版，还有第三个维度：谁盖在谁上面。
+
+---
+
+**一、z-index 是什么**
+
+`z-index` 控制元素在 z 轴上的堆叠顺序。
+
+```
+.box1 {
+  position: absolute;
+  z-index: 1;
+}
+
+.box2 {
+  position: absolute;
+  z-index: 2;
+}
+```
+
+一般来说，`z-index` 大的元素会盖在 `z-index` 小的元素上。
+
+但注意：
+
+> `z-index` 不是全局无限比较，它只在同一个层叠上下文里比较。
+
+这是最关键的一句。
+
+---
+
+**二、z-index 为什么有时候不生效**
+
+常见原因有两个。
+
+**1. 元素没有定位**
+
+传统情况下，`z-index` 对普通静态元素不生效。
+
+```
+.box {
+  z-index: 999;
+}
+```
+
+如果没有写：
+
+```
+position: relative;
+position: absolute;
+position: fixed;
+position: sticky;
+```
+
+那这个 `z-index` 可能没有效果。
+
+常见写法：
+
+```
+.box {
+  position: relative;
+  z-index: 10;
+}
+```
+
+不过现代布局里，flex/grid 子项设置 `z-index` 也能生效，即使没有显式定位。但面试基础回答里，一般先说“定位元素 z-index 才生效”即可，再补充 flex/grid 子项例外更准确。
+
+---
+
+**2. 被父级层叠上下文限制**
+
+看这个例子：
+
+```
+<div class="parent-a">
+  <div class="child-a"></div>
+</div>
+
+<div class="parent-b">
+  <div class="child-b"></div>
+</div>
+```
+
+```
+.parent-a {
+  position: relative;
+  z-index: 1;
+}
+
+.child-a {
+  position: absolute;
+  z-index: 999;
+}
+
+.parent-b {
+  position: relative;
+  z-index: 2;
+}
+
+.child-b {
+  position: absolute;
+  z-index: 1;
+}
+```
+
+你可能以为：
+
+```
+child-a z-index 999，会盖住 child-b
+```
+
+但实际可能是：
+
+```
+parent-b 整体盖住 parent-a
+```
+
+因为：
+
+```
+parent-a 是一个层叠上下文，z-index: 1
+parent-b 是一个层叠上下文，z-index: 2
+```
+
+浏览器先比较父级层叠上下文：
+
+```
+parent-b > parent-a
+```
+
+所以 `child-a` 再大，也只能在 `parent-a` 这个小世界里比较，不能跳出去盖住 `parent-b`。
+
+这就是：
+
+> 子元素的 z-index 再大，也无法突破父级层叠上下文。
+
+---
+
+**三、层叠上下文是什么**
+
+层叠上下文，英文是：
+
+```
+Stacking Context
+```
+
+你可以理解成：
+
+> 一个独立的 z-index 比较空间。
+
+一个元素形成层叠上下文后，它里面的子元素会先在内部比较层级。整个上下文再作为一个整体，和外面的元素比较。
+
+类似：
+
+```
+页面
+ ├─ 层叠上下文 A，z-index: 1
+ │   ├─ child z-index: 999
+ │   └─ child z-index: 1
+ │
+ └─ 层叠上下文 B，z-index: 2
+     ├─ child z-index: 1
+```
+
+即使 A 里面有 `999`，A 整体还是低于 B。
+
+---
+
+**四、哪些情况会创建层叠上下文**
+
+常见触发条件：
+
+```
+position: relative/absolute/fixed/sticky + z-index 不是 auto
+opacity 小于 1
+transform 不是 none
+filter 不是 none
+perspective 不是 none
+mix-blend-mode 不是 normal
+isolation: isolate
+will-change: transform / opacity
+contain: paint
+display: flex/grid 的子项设置 z-index
+```
+
+你面试重点记几个高频：
+
+```
+定位元素 + z-index
+opacity < 1
+transform
+filter
+position: fixed
+position: sticky
+will-change
+```
+
+---
+
+**五、默认层叠顺序**
+
+在同一个层叠上下文里，大致从下到上：
+
+```
+背景和边框
+负 z-index 子元素
+普通块级元素
+浮动元素
+行内元素
+z-index: auto / 0 的定位元素
+正 z-index 的定位元素
+```
+
+面试一般不要求背全，但你要知道：
+
+> 后出现的普通元素可能盖住前面的普通元素；定位元素通常比普通流元素更靠上；z-index 为正的定位元素更靠上。
+
+比如：
+
+```
+<div class="a"></div>
+<div class="b"></div>
+```
+
+如果都没有定位，后面的 `.b` 可能在重叠时盖住 `.a`。
+
+---
+
+**六、opacity 透明度**
+
+```
+.box {
+  opacity: 0.5;
+}
+```
+
+`opacity` 控制元素整体透明度。
+
+注意是整体，包括：
+
+```
+背景
+文字
+边框
+子元素
+```
+
+比如：
+
+```
+.parent {
+  opacity: 0.5;
+}
+```
+
+那么里面的文字、按钮、图片都会一起半透明。
+
+如果你只想让背景透明，不影响文字，应该用：
+
+```
+background: rgba(0, 0, 0, 0.5);
+```
+
+而不是：
+
+```
+opacity: 0.5;
+```
+
+---
+
+**opacity 和层叠上下文**
+
+只要：
+
+```
+opacity: 0.99;
+```
+
+也会创建新的层叠上下文。
+
+所以这可能影响 `z-index`。
+
+例如某个父元素写了：
+
+```
+opacity: 0.99;
+```
+
+它的子元素就被限制在这个新的层叠上下文里，可能导致弹窗盖不住外面的元素。
+
+---
+
+**七、transform**
+
+`transform` 用来做变换：
+
+```
+.box {
+  transform: translateX(100px);
+}
+```
+
+常见值：
+
+```
+translate()
+scale()
+rotate()
+skew()
+```
+
+---
+
+**transform 的几个重点**
+
+**1. 不影响普通流布局**
+
+```
+.box {
+  transform: translateX(100px);
+}
+```
+
+元素视觉上向右移动，但原本占据的位置还在。
+
+类似 `position: relative` 的视觉偏移：
+
+```
+只改变视觉位置，不改变文档流中其他元素的布局
+```
+
+---
+
+**2. transform 会创建层叠上下文**
+
+```
+.parent {
+  transform: translateZ(0);
+}
+```
+
+它会形成新的 stacking context。
+
+所以子元素的 `z-index` 会被限制在里面。
+
+---
+
+**3. transform 可能影响 fixed 定位**
+
+这是一个很重要的坑。
+
+正常：
+
+```
+.fixed {
+  position: fixed;
+  top: 0;
+}
+```
+
+是相对于视口定位。
+
+但如果它的祖先元素有：
+
+```
+.parent {
+  transform: translateX(0);
+}
+```
+
+那么 `.fixed` 可能不再相对于视口，而是相对于这个 transform 祖先定位。
+
+所以有时候弹窗、吸顶元素放在 transform 容器内部，会出现定位异常。
+
+解决方式通常是：
+
+```
+把弹窗挂到 body 下
+```
+
+比如 Vue 的 Teleport：
+
+```
+<Teleport to="body">
+  <Modal />
+</Teleport>
+```
+
+React 的 Portal：
+
+```
+createPortal(<Modal />, document.body)
+```
+
+---
+
+**4. transform 适合做动画**
+
+比如：
+
+```
+.box {
+  transition: transform 0.3s;
+}
+
+.box:hover {
+  transform: translateY(-10px);
+}
+```
+
+因为 `transform` 通常不触发布局，很多情况下只走合成，性能比改变 `top/left/width/height` 好。
+
+---
+
+**八、伪类**
+
+伪类用来描述元素的某种状态或结构关系。
+
+写法是单冒号：
+
+```
+:hover
+:active
+:focus
+:first-child
+:last-child
+:nth-child()
+:not()
+```
+
+例如：
+
+```
+button:hover {
+  background: blue;
+}
+```
+
+表示鼠标悬停状态。
+
+```
+input:focus {
+  border-color: red;
+}
+```
+
+表示输入框聚焦状态。
+
+```
+li:first-child {
+  color: red;
+}
+```
+
+表示第一个子元素。
+
+---
+
+**常见伪类**
+
+```
+:hover        鼠标悬停
+:active       激活状态
+:focus        聚焦
+:checked      选中
+:disabled     禁用
+:first-child  第一个子元素
+:last-child   最后一个子元素
+:nth-child(n) 第 n 个子元素
+:not(selector) 排除某些元素
+```
+
+---
+
+**九、伪元素**
+
+伪元素用来创建或选中元素的一部分。
+
+写法通常是双冒号：
+
+```
+::before
+::after
+::first-line
+::first-letter
+::selection
+```
+
+最常见是：
+
+```
+.box::before {
+  content: '';
+  display: block;
+}
+```
+
+伪元素像是这个元素内部生成了一个虚拟子元素。
+
+比如：
+
+```
+.badge::after {
+  content: 'NEW';
+  color: red;
+}
+```
+
+```
+<span class="badge">消息</span>
+```
+
+视觉上类似：
+
+```
+<span class="badge">
+  消息
+  ::after NEW
+</span>
+```
+
+注意：
+
+> `
+> 
+> ::before
+> 
+> `和`::after`必须有`content` 属性，否则通常不会显示。
+
+---
+
+**十、伪类和伪元素区别**
+
+一句话：
+
+```
+伪类表示元素的状态或位置
+伪元素表示元素的一部分或额外生成的虚拟元素
+```
+
+例子：
+
+```
+button:hover {}
+```
+
+`hover` 是按钮的一种状态，所以是伪类。
+
+```
+p::first-line {}
+```
+
+`first-line` 是段落的第一行，是元素的一部分，所以是伪元素。
+
+```
+.box::before {}
+```
+
+创建一个虚拟元素，所以是伪元素。
+
+---
+
+**十一、经典面试题：画三角形**
+
+CSS 三角形常用 border：
+
+```
+.triangle {
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 20px solid red;
+}
+```
+
+为什么能形成三角形？
+
+因为元素宽高为 0 时，四个 border 会在中心相交。只保留一个方向有颜色，其他方向透明，就形成三角形。
+
+也可以用伪元素做：
+
+```
+.tooltip::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  bottom: -10px;
+  width: 0;
+  height: 0;
+  border-top: 10px solid #333;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+}
+```
+
+---
+
+**十二、经典问题：为什么弹窗 z-index 很大还是被遮住**
+
+回答路径：
+
+1. 先看弹窗有没有定位：
+
+```
+position: fixed;
+z-index: 9999;
+```
+
+2. 再看父级是否创建了层叠上下文：
+
+```
+transform
+opacity < 1
+filter
+position + z-index
+```
+
+3. 如果父级层叠上下文层级低，子元素再大也出不去。
+    
+4. 解决方案：
+    
+
+```
+提高父级层叠上下文 z-index
+或者把弹窗挂到 body 下
+```
+
+比如用 Portal / Teleport。
+
+---
+
+**面试版总结**
+
+可以这样说：
+
+> `z-index` 用来控制元素在 z 轴上的堆叠顺序，但它不是全局比较，而是在同一个层叠上下文中比较。常见创建层叠上下文的方式包括定位元素设置非 auto 的 `z-index`、`opacity < 1`、`transform`、`filter`、`position: fixed/sticky` 等。子元素的 z-index 再大，也不能突破父级层叠上下文。
+> 
+> `opacity` 会让元素整体透明，包括子元素，并且小于 1 时会创建层叠上下文。如果只想背景透明，应该用 `rgba`。`transform` 可以做位移、缩放、旋转，它不会影响普通流布局，但会创建层叠上下文，也可能影响内部 fixed 元素的定位。动画里常用 `transform` 和 `opacity`，因为它们通常性能更好。
+> 
+> 伪类表示元素的状态或结构位置，比如 `:hover`、`:focus`、`:first-child`；伪元素表示元素的一部分或创建额外的虚拟元素，比如 `::before`、`::after`、`::first-line`。伪元素通常需要 `content` 才能显示。
+
+16:48
