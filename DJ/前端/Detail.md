@@ -7914,3 +7914,871 @@ visibility: hidden;
 我们下一步建议进入 CSS 面试最核心的一块：**BFC、margin 合并、浮动清除、块格式化上下文**。这块打通后，很多 CSS 老题会突然变清楚。
 
 ## 布局
+
+这部分你要建立一个主线：
+
+> CSS 布局本质是在回答：盒子在页面中如何排列、如何占空间、如何相互影响。
+
+我们按顺序讲：
+
+```
+普通流
+块级格式化 / 行内格式化
+margin 合并
+BFC
+浮动
+定位
+flex
+grid
+```
+
+---
+
+**一、普通流 Normal Flow**
+
+普通流是 CSS 默认布局方式。
+
+如果你什么布局属性都不写，元素就按普通流排布。
+
+普通流里有两类最基础的盒子：
+
+```
+块级盒子 block-level box
+行内盒子 inline-level box
+```
+
+---
+
+**块级元素怎么排**
+
+比如：
+
+```
+<div class="box">A</div>
+<div class="box">B</div>
+<p>C</p>
+```
+
+```
+.box {
+  width: 200px;
+  height: 50px;
+  background: pink;
+}
+```
+
+块级元素特点：
+
+```
+独占一行
+从上到下排列
+默认宽度占满包含块
+可以设置 width / height
+```
+
+所以效果是：
+
+```
+A
+B
+C
+```
+
+即使你写了：
+
+```
+.box {
+  width: 200px;
+}
+```
+
+它还是会独占一行，只是自身宽度是 200px，剩余空间不会让下一个块级元素上来。
+
+---
+
+**行内元素怎么排**
+
+比如：
+
+```
+<span>A</span>
+<span>B</span>
+<a>C</a>
+```
+
+行内元素特点：
+
+```
+从左到右排列
+一行放不下会换行
+宽高由内容决定
+设置 width / height 通常无效
+```
+
+效果：
+
+```
+A B C
+```
+
+---
+
+**inline-block**
+
+`inline-block` 介于二者之间：
+
+```
+.item {
+  display: inline-block;
+  width: 100px;
+  height: 40px;
+}
+```
+
+特点：
+
+```
+像 inline 一样不独占一行
+像 block 一样可以设置宽高
+```
+
+---
+
+**二、块级格式化和行内格式化**
+
+你可以理解为两套排版规则。
+
+**块级格式化**
+
+块级盒子在垂直方向一个接一个排列：
+
+```
+box1
+box2
+box3
+```
+
+每个块级盒子的左外边距边界，默认和包含块左边界接触。
+
+这就是你之前问的那句话。
+
+---
+
+**行内格式化**
+
+行内盒子在一行里从左到右排列，形成一行一行的 line box。
+
+比如：
+
+```
+<p>
+  hello <span>world</span> hello world hello world
+</p>
+```
+
+文字和 `span` 会组成行盒。
+
+如果一行放不下，就换到下一行：
+
+```
+hello world hello
+world hello world
+```
+
+浮动影响的通常就是这些行盒：文字会绕开浮动元素。
+
+---
+
+**三、margin 合并**
+
+margin 合并，也叫 margin collapse。
+
+它只发生在：
+
+```
+普通流中的块级元素垂直方向 margin
+```
+
+重点是：
+
+```
+垂直方向
+块级元素
+普通流
+```
+
+水平 margin 不会合并。
+
+---
+
+**1. 相邻兄弟元素 margin 合并**
+
+```
+<div class="a"></div>
+<div class="b"></div>
+```
+
+```
+.a {
+  height: 100px;
+  margin-bottom: 30px;
+  background: red;
+}
+
+.b {
+  height: 100px;
+  margin-top: 50px;
+  background: blue;
+}
+```
+
+你可能以为间距是：
+
+```
+30 + 50 = 80px
+```
+
+实际是：
+
+```
+max(30, 50) = 50px
+```
+
+这就是兄弟元素垂直 margin 合并。
+
+---
+
+**2. 父子元素 margin 合并**
+
+```
+<div class="parent">
+  <div class="child"></div>
+</div>
+```
+
+```
+.parent {
+  background: pink;
+}
+
+.child {
+  margin-top: 50px;
+  height: 100px;
+  background: red;
+}
+```
+
+你可能以为子元素距离父元素顶部 50px。
+
+但如果父元素没有：
+
+```
+border
+padding
+inline content
+height / min-height
+BFC
+```
+
+子元素的 `margin-top` 可能会“穿透”父元素，和父元素发生 margin 合并。
+
+表现是：
+
+```
+整个 parent 往下移动 50px
+而不是 child 在 parent 内部往下移动
+```
+
+---
+
+**3. 空块元素自身 margin 合并**
+
+```
+.empty {
+  margin-top: 20px;
+  margin-bottom: 40px;
+}
+```
+
+如果这个元素没有内容、没有高度、没有 border、没有 padding，它自己的上下 margin 也可能合并。
+
+---
+
+**如何阻止 margin 合并**
+
+常见方式：
+
+```
+.parent {
+  overflow: hidden;
+}
+```
+
+或者：
+
+```
+.parent {
+  display: flow-root;
+}
+```
+
+或者给父元素加：
+
+```
+padding-top: 1px;
+```
+
+或者：
+
+```
+border-top: 1px solid transparent;
+```
+
+更现代、语义更清晰的是：
+
+```
+display: flow-root;
+```
+
+---
+
+**四、BFC**
+
+BFC 全称：
+
+```
+Block Formatting Context
+```
+
+块级格式化上下文。
+
+先不要死背定义，先理解它是什么：
+
+> BFC 是页面中的一块独立布局区域。这个区域内部的元素怎么布局，不会影响外部；外部的浮动等也不会影响它内部的布局方式。
+
+或者更口语一点：
+
+> BFC 像一个独立的布局小房间，里面的块级盒子按自己的规则排，外面很多影响进不来。
+
+---
+
+**怎么触发 BFC**
+
+常见方式：
+
+```
+overflow: hidden;
+overflow: auto;
+display: flow-root;
+display: inline-block;
+display: flex;
+display: grid;
+position: absolute;
+position: fixed;
+float: left;
+float: right;
+```
+
+现在推荐记：
+
+```
+display: flow-root;
+```
+
+它就是专门用来创建 BFC 的。
+
+---
+
+**BFC 的常见作用**
+
+**1. 清除浮动**
+
+经典问题：
+
+```
+<div class="parent">
+  <div class="float"></div>
+</div>
+```
+
+```
+.float {
+  float: left;
+  width: 100px;
+  height: 100px;
+}
+```
+
+如果父元素里只有浮动子元素，父元素高度可能塌陷。
+
+因为浮动元素脱离普通流，不再撑开父元素高度。
+
+解决：
+
+```
+.parent {
+  display: flow-root;
+}
+```
+
+或者老写法：
+
+```
+.parent {
+  overflow: hidden;
+}
+```
+
+这样父元素形成 BFC，会包含内部浮动，父元素高度被撑开。
+
+---
+
+**2. 阻止 margin 合并**
+
+```
+.parent {
+  display: flow-root;
+}
+```
+
+父元素形成 BFC 后，子元素的 margin 不会和父元素外部合并。
+
+---
+
+**3. 避免被浮动元素覆盖**
+
+```
+<div class="float"></div>
+<div class="content">内容</div>
+```
+
+```
+.float {
+  float: left;
+  width: 100px;
+  height: 100px;
+}
+
+.content {
+  display: flow-root;
+}
+```
+
+`.content` 形成 BFC 后，会避开左侧浮动元素，不会跑到浮动元素下面。
+
+---
+
+**五、浮动 float**
+
+`float` 最早是为了图文环绕。
+
+```
+.img {
+  float: left;
+  width: 120px;
+}
+```
+
+文字会绕着图片排：
+
+```
+[图片] 文字文字文字
+[图片] 文字文字文字
+      文字文字文字
+```
+
+浮动的特点：
+
+```
+元素脱离普通流
+但仍会影响后面行内内容
+后面的文字会环绕它
+父元素可能高度塌陷
+```
+
+---
+
+**浮动为什么会导致父元素高度塌陷**
+
+```
+<div class="parent">
+  <div class="child"></div>
+</div>
+```
+
+```
+.child {
+  float: left;
+  width: 100px;
+  height: 100px;
+}
+```
+
+`.child` 浮动后脱离普通流。
+
+父元素计算高度时，普通流里好像没有子元素。
+
+所以父元素高度变成 0。
+
+解决方式：
+
+```
+.parent {
+  display: flow-root;
+}
+```
+
+或者 clearfix：
+
+```
+.clearfix::after {
+  content: '';
+  display: block;
+  clear: both;
+}
+```
+
+---
+
+**六、定位 position**
+
+定位用于改变元素的位置和层级。
+
+常见值：
+
+```
+position: static;
+position: relative;
+position: absolute;
+position: fixed;
+position: sticky;
+```
+
+---
+
+**static**
+
+默认值。
+
+```
+position: static;
+```
+
+元素在普通流中正常排列。
+
+`top/right/bottom/left` 无效。
+
+---
+
+**relative**
+
+相对定位。
+
+```
+.box {
+  position: relative;
+  top: 20px;
+  left: 30px;
+}
+```
+
+特点：
+
+```
+元素仍然占据原来的位置
+视觉上相对于自身原位置偏移
+不会影响其他元素布局
+```
+
+比如一个盒子往下移动 20px，但它原来的坑还留着。
+
+---
+
+**absolute**
+
+绝对定位。
+
+```
+.child {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+```
+
+特点：
+
+```
+脱离普通流
+不占据原来的空间
+相对于最近的非 static 定位祖先定位
+如果没有，就相对于初始包含块
+```
+
+常见写法：
+
+```
+.parent {
+  position: relative;
+}
+
+.child {
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+```
+
+这样 `.child` 相对 `.parent` 定位。
+
+---
+
+**fixed**
+
+固定定位。
+
+```
+.box {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+}
+```
+
+特点：
+
+```
+脱离普通流
+相对于视口定位
+页面滚动时位置不变
+```
+
+常用于悬浮按钮、固定头部。
+
+---
+
+**sticky**
+
+粘性定位。
+
+```
+.header {
+  position: sticky;
+  top: 0;
+}
+```
+
+特点：
+
+```
+在普通流中占位
+滚动到指定阈值后变成类似 fixed
+```
+
+常用于吸顶导航。
+
+注意父元素不能有不合适的 `overflow: hidden/auto`，否则 sticky 可能不生效。
+
+---
+
+**七、Flex 布局**
+
+Flex 是一维布局：
+
+```
+主轴 + 交叉轴
+```
+
+适合处理一行或一列的排列。
+
+```
+.container {
+  display: flex;
+}
+```
+
+默认：
+
+```
+主轴：水平方向，从左到右
+交叉轴：垂直方向
+```
+
+---
+
+**容器属性**
+
+```
+.container {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+```
+
+`flex-direction`：主轴方向
+
+```
+row
+row-reverse
+column
+column-reverse
+```
+
+`justify-content`：主轴对齐
+
+```
+flex-start
+center
+flex-end
+space-between
+space-around
+space-evenly
+```
+
+`align-items`：交叉轴对齐
+
+```
+stretch
+flex-start
+center
+flex-end
+baseline
+```
+
+`flex-wrap`：是否换行
+
+```
+nowrap
+wrap
+```
+
+---
+
+**项目属性**
+
+```
+.item {
+  flex: 1;
+}
+```
+
+`flex: 1` 常见含义：
+
+```
+flex-grow: 1;
+flex-shrink: 1;
+flex-basis: 0%;
+```
+
+意思是：
+
+```
+允许放大
+允许缩小
+初始基础尺寸为 0
+```
+
+常用于等分布局：
+
+```
+.item {
+  flex: 1;
+}
+```
+
+三个 item 平分宽度。
+
+---
+
+**经典 flex 居中**
+
+```
+.parent {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+```
+
+水平垂直居中。
+
+---
+
+**八、Grid 布局**
+
+Grid 是二维布局：
+
+```
+行 + 列
+```
+
+适合整体页面结构、卡片网格。
+
+```
+.container {
+  display: grid;
+  grid-template-columns: 200px 1fr 1fr;
+  grid-template-rows: 80px 1fr;
+  gap: 16px;
+}
+```
+
+比如三列布局：
+
+```
+.container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+```
+
+自适应卡片：
+
+```
+.container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+```
+
+含义：
+
+```
+每列最小 240px
+空间够就自动增加列数
+不够就换行
+```
+
+---
+
+**Flex 和 Grid 的区别**
+
+|对比|Flex|Grid|
+|---|---|---|
+|维度|一维布局|二维布局|
+|适合|一行或一列|行列同时控制|
+|常用场景|导航栏、按钮组、左右布局|页面整体布局、卡片网格|
+|控制方式|主要控制主轴和交叉轴|明确控制行和列|
+
+一句话：
+
+> 一维用 Flex，二维用 Grid。
+
+---
+
+**布局面试版总结**
+
+可以这样答：
+
+> CSS 默认布局是普通流，块级元素从上到下排列并独占一行，行内元素从左到右排列，形成行盒。普通流中的块级元素垂直 margin 可能会发生合并，比如相邻兄弟元素上下 margin 会取较大值，父子元素在没有 border、padding、BFC 等阻隔时也可能合并。
+> 
+> BFC 是块级格式化上下文，可以理解为独立的布局区域，常见触发方式有 `overflow: hidden`、`display: flow-root`、`display: flex/grid`、`position: absolute/fixed`、`float` 等。BFC 常用来清除浮动、阻止 margin 合并、避免被浮动元素覆盖。
+> 
+> 浮动最初用于文字环绕，会让元素脱离普通流，但仍影响后面的行内内容，因此可能导致父元素高度塌陷，通常用 `display: flow-root` 或 clearfix 清除浮动。定位里，`relative` 不脱离文档流，偏移后原位置保留；`absolute` 脱离文档流，相对于最近的非 static 定位祖先定位；`fixed` 相对视口固定；`sticky` 是普通流和固定定位的结合。
+> 
+> Flex 是一维布局，适合一行或一列的对齐和分配空间；Grid 是二维布局，适合同时控制行和列，比如页面结构和卡片网格。面试时可以总结为：一维布局优先 Flex，二维布局优先 Grid。
