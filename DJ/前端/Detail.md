@@ -8061,7 +8061,616 @@ setTimeout 也没机会执行
 > 
 > 微任务的特点是优先级高于宏任务。当前同步代码执行完后，事件循环会先清空所有微任务，包括微任务执行过程中新增的微任务，然后才会进入页面渲染或下一个宏任务。所以 `Promise.then` 通常会比 `setTimeout` 更早执行，但也不能无限创建微任务，否则会阻塞渲染。
 
+# 前端常见发请求方式
 
+可以按“时代”来记：
+
+```
+原生表单提交
+XMLHttpRequest / Ajax
+fetch
+axios
+JSONP
+WebSocket / SSE
+```
+
+日常面试重点是：
+
+```
+Ajax / XMLHttpRequest
+fetch
+axios
+JSONP
+```
+
+---
+
+**一、Ajax 是什么**
+
+Ajax 全称：
+
+```
+Asynchronous JavaScript and XML
+```
+
+中文一般叫：
+
+```
+异步 JavaScript 和 XML
+```
+
+但现在它不一定传 XML，更多是 JSON。
+
+Ajax 不是某一个具体 API，而是一种技术思想：
+
+> 页面不整体刷新，通过 JavaScript 异步向服务器请求数据，再局部更新页面。
+
+早期 Ajax 主要依赖：
+
+```
+XMLHttpRequest
+```
+
+所以很多时候大家会把 Ajax 和 XHR 混着说。
+
+---
+
+**二、XMLHttpRequest**
+
+`XMLHttpRequest` 是浏览器原生提供的请求 API。
+
+基础写法：
+
+```
+const xhr = new XMLHttpRequest()
+
+xhr.open('GET', '/api/user', true)
+
+xhr.onreadystatechange = function () {
+  if (xhr.readyState === 4) {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      console.log(JSON.parse(xhr.responseText))
+    } else {
+      console.log('请求失败', xhr.status)
+    }
+  }
+}
+
+xhr.onerror = function () {
+  console.log('网络错误')
+}
+
+xhr.send()
+```
+
+---
+
+**readyState 状态**
+
+XHR 有 5 个状态：
+
+```
+0：UNSENT，未调用 open
+1：OPENED，已调用 open
+2：HEADERS_RECEIVED，已收到响应头
+3：LOADING，响应体接收中
+4：DONE，请求完成
+```
+
+一般只关心：
+
+```
+xhr.readyState === 4
+```
+
+表示请求结束。
+
+---
+
+**GET 请求**
+
+```
+const xhr = new XMLHttpRequest()
+
+xhr.open('GET', '/api/user?id=1')
+
+xhr.onload = function () {
+  if (xhr.status >= 200 && xhr.status < 300) {
+    console.log(JSON.parse(xhr.responseText))
+  }
+}
+
+xhr.send()
+```
+
+---
+
+**POST 请求**
+
+```
+const xhr = new XMLHttpRequest()
+
+xhr.open('POST', '/api/user')
+
+xhr.setRequestHeader('Content-Type', 'application/json')
+
+xhr.onload = function () {
+  console.log(JSON.parse(xhr.responseText))
+}
+
+xhr.send(JSON.stringify({
+  name: 'Tom'
+}))
+```
+
+---
+
+**XHR 的特点**
+
+优点：
+
+```
+兼容性好
+支持上传进度
+支持取消请求 abort
+支持设置超时
+```
+
+比如取消：
+
+```
+xhr.abort()
+```
+
+超时：
+
+```
+xhr.timeout = 5000
+
+xhr.ontimeout = function () {
+  console.log('请求超时')
+}
+```
+
+上传进度：
+
+```
+xhr.upload.onprogress = function (event) {
+  const percent = event.loaded / event.total * 100
+  console.log(percent)
+}
+```
+
+缺点：
+
+```
+API 比较老
+写法繁琐
+基于事件回调
+不天然支持 Promise
+```
+
+---
+
+**三、fetch**
+
+`fetch` 是现代浏览器提供的新请求 API，基于 Promise。
+
+基础 GET：
+
+```
+fetch('/api/user')
+  .then(response => response.json())
+  .then(data => {
+    console.log(data)
+  })
+  .catch(error => {
+    console.log(error)
+  })
+```
+
+POST：
+
+```
+fetch('/api/user', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'Tom'
+  })
+})
+  .then(response => response.json())
+  .then(data => {
+    console.log(data)
+  })
+```
+
+配合 async/await：
+
+```
+async function getUser() {
+  try {
+    const response = await fetch('/api/user')
+    const data = await response.json()
+    console.log(data)
+  } catch (err) {
+    console.log(err)
+  }
+}
+```
+
+---
+
+**fetch 的重要特点**
+
+**1. fetch 默认只在网络错误时 reject**
+
+这点很容易踩坑。
+
+```
+fetch('/api/not-found')
+  .then(response => {
+    console.log(response.status) // 404
+  })
+  .catch(err => {
+    console.log('catch')
+  })
+```
+
+如果服务器返回 404 或 500，`fetch` 不会自动进入 `catch`。
+
+因为它认为：
+
+```
+请求成功到达服务器，并收到了响应
+```
+
+只有网络错误、请求被拦截、跨域失败等才会 reject。
+
+所以要自己判断：
+
+```
+async function request(url) {
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error(`HTTP error: ${response.status}`)
+  }
+
+  return response.json()
+}
+```
+
+`response.ok` 表示状态码是否在：
+
+```
+200 ~ 299
+```
+
+---
+
+**2. fetch 默认不带 cookie**
+
+跨域请求时，fetch 默认不携带 cookie。
+
+需要：
+
+```
+fetch('https://api.example.com/user', {
+  credentials: 'include'
+})
+```
+
+同源请求想明确携带：
+
+```
+credentials: 'same-origin'
+```
+
+几个值：
+
+```
+omit：不携带 cookie
+same-origin：同源携带，默认值
+include：跨域也携带
+```
+
+---
+
+**3. fetch 支持 AbortController 取消请求**
+
+```
+const controller = new AbortController()
+
+fetch('/api/user', {
+  signal: controller.signal
+}).catch(err => {
+  if (err.name === 'AbortError') {
+    console.log('请求取消')
+  }
+})
+
+controller.abort()
+```
+
+---
+
+**4. fetch 原生不直接支持上传进度**
+
+XHR 有：
+
+```
+xhr.upload.onprogress
+```
+
+fetch 标准使用上不如 XHR 方便获取上传进度。
+
+所以上传文件需要进度条时，很多项目仍然用 XHR 或 axios。
+
+---
+
+**四、axios**
+
+axios 是一个常用第三方请求库。
+
+它底层在浏览器中通常基于 XHR，在 Node 中基于 http 模块。
+
+GET：
+
+```
+axios.get('/api/user', {
+  params: {
+    id: 1
+  }
+}).then(res => {
+  console.log(res.data)
+})
+```
+
+POST：
+
+```
+axios.post('/api/user', {
+  name: 'Tom'
+}).then(res => {
+  console.log(res.data)
+})
+```
+
+async/await：
+
+```
+const res = await axios.get('/api/user')
+console.log(res.data)
+```
+
+---
+
+**axios 的特点**
+
+```
+基于 Promise
+自动转换 JSON
+请求和响应拦截器
+统一错误处理
+支持取消请求
+支持超时
+支持请求/响应转换
+支持上传进度
+```
+
+拦截器：
+
+```
+axios.interceptors.request.use(config => {
+  config.headers.Authorization = 'Bearer token'
+  return config
+})
+
+axios.interceptors.response.use(
+  response => response.data,
+  error => {
+    if (error.response?.status === 401) {
+      console.log('跳转登录')
+    }
+    return Promise.reject(error)
+  }
+)
+```
+
+这就是为什么企业项目里常封装 axios。
+
+---
+
+**五、fetch 和 axios 区别**
+
+|对比|fetch|axios|
+|---|---|---|
+|类型|浏览器原生 API|第三方库|
+|底层|浏览器实现|浏览器端通常基于 XHR|
+|Promise|原生支持|支持|
+|JSON 处理|需要手动 `res.json()`|自动处理|
+|HTTP 错误|404/500 不会 reject|默认会 reject|
+|拦截器|原生没有|有|
+|超时|需配合 AbortController|内置 timeout|
+|取消请求|AbortController|支持|
+|上传进度|不方便|支持较好|
+|兼容性|现代浏览器|兼容性更可控|
+
+---
+
+**六、JSONP**
+
+JSONP 是早期解决跨域的一种方式。
+
+利用的是：
+
+> `<script>` 标签不受同源策略限制。
+
+比如：
+
+```
+<script src="https://api.example.com/user?callback=handleUser"></script>
+```
+
+服务端返回：
+
+```
+handleUser({
+  name: 'Tom'
+})
+```
+
+前端定义：
+
+```
+function handleUser(data) {
+  console.log(data)
+}
+```
+
+特点：
+
+```
+只能 GET
+不是真正的 Ajax
+安全性较差
+需要服务端配合
+现在更多用 CORS 替代
+```
+
+---
+
+**七、表单提交**
+
+最传统的方式：
+
+```
+<form action="/login" method="post">
+  <input name="username">
+  <input name="password">
+  <button type="submit">提交</button>
+</form>
+```
+
+特点：
+
+```
+会导致页面跳转或刷新
+不适合 SPA 局部更新
+但上传文件、兼容老环境时仍有意义
+```
+
+---
+
+**八、WebSocket 和 SSE**
+
+这两个不是普通 HTTP 请求，但也是前端和服务器通信方式。
+
+**WebSocket**
+
+双向通信：
+
+```
+const ws = new WebSocket('wss://example.com/socket')
+
+ws.onmessage = event => {
+  console.log(event.data)
+}
+
+ws.send('hello')
+```
+
+适合：
+
+```
+聊天
+实时协作
+在线游戏
+行情推送
+```
+
+---
+
+**SSE**
+
+Server-Sent Events，服务端单向推送给客户端：
+
+```
+const eventSource = new EventSource('/events')
+
+eventSource.onmessage = event => {
+  console.log(event.data)
+}
+```
+
+适合：
+
+```
+消息通知
+日志推送
+服务端状态推送
+```
+
+---
+
+**九、实际项目里怎么选**
+
+普通业务接口：
+
+```
+axios / fetch
+```
+
+企业项目常用：
+
+```
+axios + 统一封装 + 拦截器
+```
+
+需要上传进度：
+
+```
+XHR / axios
+```
+
+简单现代项目：
+
+```
+fetch
+```
+
+老式跨域兼容：
+
+```
+JSONP，现在较少
+```
+
+实时双向通信：
+
+```
+WebSocket
+```
+
+服务端单向推送：
+
+```
+SSE
+```
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> 前端常见发请求方式有原生表单提交、XMLHttpRequest，也就是常说的 Ajax、fetch、axios、JSONP，以及 WebSocket、SSE 这类实时通信方式。Ajax 本质是一种异步请求并局部更新页面的思想，早期主要通过 XMLHttpRequest 实现。XHR 兼容性好，支持超时、取消、上传进度，但写法比较繁琐，基于事件回调。
+> 
+> fetch 是现代浏览器原生提供的请求 API，基于 Promise，写法更简洁，可以配合 async/await。但 fetch 对 404、500 不会自动 reject，需要自己判断 `response.ok`；跨域带 cookie 要设置 `credentials: 'include'`；取消请求要配合 AbortController。
+> 
+> axios 是第三方请求库，浏览器端通常基于 XHR，封装了 Promise、自动 JSON 转换、拦截器、超时、取消请求、上传进度等能力，所以企业项目里经常基于 axios 做统一请求封装。JSONP 是利用 script 标签不受同源限制实现跨域，只支持 GET，现在大多被 CORS 替代。
 # Map,Weakmap
 可以，这个题要从三个维度讲：**键的类型、引用强弱、能不能遍历**。
 
