@@ -7018,6 +7018,655 @@ mounted() {
 > 
 > 所以 SSR 的关键是服务端先渲染出有内容的 HTML，让用户更快看到首屏，客户端 JS 再通过 hydrate 接管页面，保留前端框架的交互能力。SSR 首屏快、SEO 好，但服务端压力大，需要处理数据获取、HTML 生成、hydration mismatch 等问题。
 
+# 各种宽度高度区分
+
+当然，这块确实很容易乱。你可以把浏览器里的宽高分成 4 类：
+
+```
+元素尺寸：clientWidth / offsetWidth / scrollWidth
+元素位置：offsetTop / clientTop / getBoundingClientRect()
+窗口尺寸：innerWidth / outerWidth / documentElement.clientWidth
+屏幕尺寸：screen.width / screen.availWidth
+```
+
+我们逐个区分。
+
+---
+
+**一、元素尺寸相关**
+
+假设有这个元素：
+
+```
+.box {
+  width: 200px;
+  height: 100px;
+  padding: 20px;
+  border: 10px solid #000;
+  margin: 30px;
+  overflow: auto;
+}
+```
+
+HTML：
+
+```
+<div class="box">
+  很多很多内容...
+</div>
+```
+
+---
+
+**1. clientWidth / clientHeight**
+
+```
+el.clientWidth
+el.clientHeight
+```
+
+表示：
+
+```
+内容区域 + padding
+不包括 border
+不包括 margin
+不包括滚动条
+```
+
+如果：
+
+```
+width: 200px;
+padding: 20px;
+border: 10px;
+```
+
+标准盒模型下：
+
+```
+clientWidth = content width + padding-left + padding-right
+clientWidth = 200 + 20 + 20 = 240
+```
+
+注意：如果出现垂直滚动条，`clientWidth` 通常会减去滚动条宽度。
+
+常用场景：
+
+```
+获取元素内部可视区域大小
+判断容器可视宽高
+```
+
+---
+
+**2. offsetWidth / offsetHeight**
+
+```
+el.offsetWidth
+el.offsetHeight
+```
+
+表示：
+
+```
+内容区域 + padding + border + 滚动条
+不包括 margin
+```
+
+同样：
+
+```
+width: 200px;
+padding: 20px;
+border: 10px;
+```
+
+标准盒模型下：
+
+```
+offsetWidth = 200 + 40 + 20 = 260
+```
+
+如果有滚动条，滚动条也算在里面。
+
+常用场景：
+
+```
+获取元素实际占据的视觉尺寸
+```
+
+注意：
+
+> `offsetWidth` 不包含 margin。
+
+很多人会误以为包含 margin，不包含。
+
+---
+
+**3. scrollWidth / scrollHeight**
+
+```
+el.scrollWidth
+el.scrollHeight
+```
+
+表示：
+
+```
+元素内容的完整尺寸，包括因为溢出而不可见的部分
+```
+
+比如：
+
+```
+.box {
+  width: 200px;
+  height: 100px;
+  overflow: auto;
+}
+```
+
+里面内容实际高度是 500px。
+
+那么可能是：
+
+```
+clientHeight = 100
+scrollHeight = 500
+```
+
+常用来判断是否出现滚动：
+
+```
+const hasVerticalScroll = el.scrollHeight > el.clientHeight
+```
+
+横向滚动：
+
+```
+const hasHorizontalScroll = el.scrollWidth > el.clientWidth
+```
+
+---
+
+**4. scrollTop / scrollLeft**
+
+```
+el.scrollTop
+el.scrollLeft
+```
+
+表示：
+
+```
+元素已经滚动出去的距离
+```
+
+比如一个容器向下滚动了 100px：
+
+```
+el.scrollTop // 100
+```
+
+常用场景：
+
+```
+if (el.scrollTop + el.clientHeight >= el.scrollHeight) {
+  console.log('滚动到底部')
+}
+```
+
+---
+
+**元素尺寸总结**
+
+|属性|包含 content|padding|border|margin|滚动条|溢出内容|
+|---|---|---|---|---|---|---|
+|`clientWidth`|是|是|否|否|否|否|
+|`offsetWidth`|是|是|是|否|是|否|
+|`scrollWidth`|是|是|否|否|通常不算|是|
+
+---
+
+**二、元素位置相关**
+
+**1. offsetTop / offsetLeft**
+
+```
+el.offsetTop
+el.offsetLeft
+```
+
+表示：
+
+> 元素 border box 相对于 offsetParent 的偏移距离。
+
+`offsetParent` 通常是最近的有定位的祖先元素。
+
+比如：
+
+```
+.parent {
+  position: relative;
+}
+
+.child {
+  margin-top: 20px;
+}
+```
+
+```
+child.offsetTop
+```
+
+表示 `.child` 距离 `.parent` 顶部的距离。
+
+注意：
+
+```
+offsetTop 是相对 offsetParent，不一定是相对视口，也不一定是相对页面。
+```
+
+---
+
+**2. clientTop / clientLeft**
+
+```
+el.clientTop
+el.clientLeft
+```
+
+通常表示：
+
+```
+上边框宽度
+左边框宽度
+```
+
+比如：
+
+```
+.box {
+  border-top: 10px solid red;
+  border-left: 8px solid blue;
+}
+```
+
+```
+box.clientTop  // 10
+box.clientLeft // 8
+```
+
+日常用得不多。
+
+---
+
+**3. getBoundingClientRect()**
+
+```
+const rect = el.getBoundingClientRect()
+```
+
+返回元素相对于视口的位置和尺寸：
+
+```
+{
+  x,
+  y,
+  width,
+  height,
+  top,
+  right,
+  bottom,
+  left
+}
+```
+
+特点：
+
+```
+相对于视口
+包含 padding + border
+会受 transform 影响
+返回值可能是小数
+```
+
+比如：
+
+```
+rect.top
+```
+
+表示元素顶部距离视口顶部的距离。
+
+如果页面向下滚动，`rect.top` 会变化。
+
+常用场景：
+
+```
+判断元素是否进入视口
+获取元素精确位置
+做弹窗/tooltip 定位
+```
+
+判断是否进入视口：
+
+```
+const rect = el.getBoundingClientRect()
+
+const isVisible =
+  rect.top < window.innerHeight &&
+  rect.bottom > 0
+```
+
+---
+
+**如果要相对于整个页面的位置**
+
+`getBoundingClientRect()` 是相对视口。
+
+如果要相对文档页面：
+
+```
+const rect = el.getBoundingClientRect()
+
+const pageTop = rect.top + window.scrollY
+const pageLeft = rect.left + window.scrollX
+```
+
+---
+
+**三、窗口尺寸相关**
+
+**1. window.innerWidth / innerHeight**
+
+```
+window.innerWidth
+window.innerHeight
+```
+
+表示：
+
+```
+浏览器视口的内部宽高
+包含滚动条
+```
+
+也就是当前页面可视区域大小。
+
+常用：
+
+```
+if (window.innerWidth < 768) {
+  console.log('移动端布局')
+}
+```
+
+---
+
+**2. document.documentElement.clientWidth / clientHeight**
+
+```
+document.documentElement.clientWidth
+document.documentElement.clientHeight
+```
+
+表示：
+
+```
+HTML 根元素的可视区域宽高
+通常不包含滚动条
+```
+
+很多时候它和 `window.innerWidth` 接近，但差别在于滚动条。
+
+例如：
+
+```
+window.innerWidth =  1920
+document.documentElement.clientWidth = 1903
+```
+
+差的 17px 可能就是滚动条宽度。
+
+移动端适配时常用：
+
+```
+const width = document.documentElement.clientWidth
+```
+
+因为它更接近布局视口宽度。
+
+---
+
+**3. window.outerWidth / outerHeight**
+
+```
+window.outerWidth
+window.outerHeight
+```
+
+表示：
+
+```
+浏览器整个窗口的宽高
+包括地址栏、工具栏、边框等浏览器 UI
+```
+
+前端布局很少用。
+
+---
+
+**4. window.scrollX / scrollY**
+
+```
+window.scrollX
+window.scrollY
+```
+
+表示页面横向 / 纵向滚动距离。
+
+等价常见旧写法：
+
+```
+window.pageXOffset
+window.pageYOffset
+```
+
+例如页面向下滚动 500px：
+
+```
+window.scrollY // 500
+```
+
+---
+
+**四、页面文档尺寸**
+
+**1. document.documentElement.scrollHeight**
+
+```
+document.documentElement.scrollHeight
+```
+
+表示整个页面内容高度。
+
+比如页面总高度是 3000px，视口高度是 800px：
+
+```
+document.documentElement.scrollHeight // 3000
+document.documentElement.clientHeight // 800
+```
+
+判断页面滚动到底部：
+
+```
+const html = document.documentElement
+
+if (window.scrollY + html.clientHeight >= html.scrollHeight) {
+  console.log('到底了')
+}
+```
+
+---
+
+**2. body 和 documentElement 的区别**
+
+有时候你会看到：
+
+```
+document.body.scrollHeight
+document.documentElement.scrollHeight
+```
+
+不同浏览器、不同文档模式下可能有差异。
+
+现在一般优先用：
+
+```
+document.documentElement
+```
+
+也就是 `<html>` 元素。
+
+兼容写法：
+
+```
+const scrollTop =
+  window.scrollY ||
+  document.documentElement.scrollTop ||
+  document.body.scrollTop
+```
+
+---
+
+**五、屏幕尺寸相关**
+
+**1. screen.width / screen.height**
+
+```
+screen.width
+screen.height
+```
+
+表示：
+
+```
+设备屏幕的 CSS 像素宽高
+```
+
+不是浏览器视口。
+
+比如你浏览器只开半屏，`screen.width` 还是整个屏幕宽度。
+
+---
+
+**2. screen.availWidth / availHeight**
+
+```
+screen.availWidth
+screen.availHeight
+```
+
+表示：
+
+```
+屏幕可用区域
+```
+
+会扣掉系统任务栏、Dock 等区域。
+
+前端业务里用得不多。
+
+---
+
+**六、移动端还要注意 visualViewport**
+
+移动端有地址栏、键盘、缩放这些因素。
+
+可以用：
+
+```
+window.visualViewport.width
+window.visualViewport.height
+```
+
+表示视觉视口大小。
+
+比如手机键盘弹出后，`visualViewport.height` 会变小。
+
+有时候处理输入框被键盘遮挡，会用到它。
+
+---
+
+**七、最常用怎么选**
+
+如果你想获取元素可视内容区域：
+
+```
+el.clientWidth
+el.clientHeight
+```
+
+如果你想获取元素实际边框盒尺寸：
+
+```
+el.offsetWidth
+el.offsetHeight
+```
+
+如果你想知道内容是否溢出：
+
+```
+el.scrollHeight > el.clientHeight
+```
+
+如果你想获取元素相对视口位置：
+
+```
+el.getBoundingClientRect()
+```
+
+如果你想获取视口宽高：
+
+```
+window.innerWidth
+window.innerHeight
+```
+
+如果你想获取布局视口宽高，特别是移动端适配：
+
+```
+document.documentElement.clientWidth
+document.documentElement.clientHeight
+```
+
+如果你想获取页面滚动距离：
+
+```
+window.scrollY
+window.scrollX
+```
+
+如果你想获取页面总高度：
+
+```
+document.documentElement.scrollHeight
+```
+
+---
+
+**八、面试版总结**
+
+可以这样说：
+
+> 元素尺寸常见有 `clientWidth`、`offsetWidth`、`scrollWidth`。`clientWidth` 包含 content 和 padding，不包含 border、margin 和滚动条；`offsetWidth` 包含 content、padding、border 和滚动条，不包含 margin；`scrollWidth` 表示内容的完整宽度，包括溢出不可见部分。高度同理。
+> 
+> `getBoundingClientRect()` 返回元素相对于视口的位置和尺寸，包含 padding 和 border，会受 transform 影响，常用于判断元素是否进入视口或做浮层定位。`offsetTop/offsetLeft` 是相对 `offsetParent` 的偏移，不一定是相对视口。
+> 
+> 窗口尺寸里，`window.innerWidth` 表示视口内部宽度，通常包含滚动条；`document.documentElement.clientWidth` 表示根元素可视宽度，通常不包含滚动条，更常用于布局计算。`screen.width` 是整个屏幕宽度，不等于浏览器视口宽度。
+
 # 虚拟dom
 **虚拟 DOM 是什么**
 
