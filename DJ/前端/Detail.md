@@ -9430,4 +9430,592 @@ position + z-index
 > `opacity` 会让元素整体透明，包括子元素，并且小于 1 时会创建层叠上下文。如果只想背景透明，应该用 `rgba`。`transform` 可以做位移、缩放、旋转，它不会影响普通流布局，但会创建层叠上下文，也可能影响内部 fixed 元素的定位。动画里常用 `transform` 和 `opacity`，因为它们通常性能更好。
 > 
 > 伪类表示元素的状态或结构位置，比如 `:hover`、`:focus`、`:first-child`；伪元素表示元素的一部分或创建额外的虚拟元素，比如 `::before`、`::after`、`::first-line`。伪元素通常需要 `content` 才能显示。
+> 
 
+好，我们进入 CSS 第四块：**响应式与适配**。
+
+这一块面试要抓住一个主线：
+
+> 不同设备屏幕大小、像素密度、使用场景都不同，CSS 需要让页面在不同环境下保持可读、可用、布局合理。
+
+我们按这几个点讲：
+
+```
+px
+em
+rem
+vw / vh
+媒体查询
+移动端适配
+1px 问题
+```
+
+---
+
+**一、先理解 px**
+
+`px` 是 CSS 像素，不一定等于设备物理像素。
+
+比如 iPhone 的 DPR 是 2 或 3。
+
+```
+1 CSS px 可能对应 2x2 或 3x3 个物理像素
+```
+
+所以：
+
+```
+.box {
+  width: 100px;
+}
+```
+
+这里的 `100px` 是 CSS 像素，不是屏幕硬件的 100 个发光点。
+
+---
+
+**二、DPR 是什么**
+
+DPR 全称：
+
+```
+Device Pixel Ratio
+```
+
+设备像素比。
+
+公式：
+
+```
+DPR = 物理像素 / CSS 像素
+```
+
+比如某手机：
+
+```
+CSS 视口宽度：375px
+物理像素宽度：750px
+```
+
+那么：
+
+```
+DPR = 750 / 375 = 2
+```
+
+这就是为什么设计稿经常是 750px，而 CSS 写 375px。
+
+---
+
+**三、viewport 是什么**
+
+移动端必须写：
+
+```
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+```
+
+含义：
+
+```
+layout viewport 宽度等于设备宽度
+初始缩放比例为 1
+```
+
+如果不写，移动端浏览器可能会用一个默认的宽视口，比如 980px，然后把页面缩小显示，导致页面看起来很小。
+
+所以移动端适配第一步就是 viewport。
+
+---
+
+**四、em**
+
+`em` 是相对于当前元素或父元素字体大小的单位。
+
+看例子：
+
+```
+.parent {
+  font-size: 20px;
+}
+
+.child {
+  width: 10em;
+}
+```
+
+如果 `.child` 自己没有设置 `font-size`，继承父元素的 `20px`。
+
+那么：
+
+```
+10em = 10 * 20px = 200px
+```
+
+如果 `.child` 自己设置：
+
+```
+.child {
+  font-size: 16px;
+  width: 10em;
+}
+```
+
+那么：
+
+```
+10em = 10 * 16px = 160px
+```
+
+所以 `em` 的问题是：
+
+> 它会受到当前元素 font-size 影响，嵌套多了容易计算混乱。
+
+---
+
+**em 常用场景**
+
+`em` 适合做和文字大小相关的局部尺寸。
+
+比如按钮：
+
+```
+.button {
+  font-size: 16px;
+  padding: 0.5em 1em;
+}
+```
+
+如果按钮字体变大，padding 也跟着变大，比例保持自然。
+
+---
+
+**五、rem**
+
+`rem` 全称：
+
+```
+root em
+```
+
+它相对于根元素 `html` 的字体大小。
+
+```
+html {
+  font-size: 16px;
+}
+
+.box {
+  width: 10rem;
+}
+```
+
+那么：
+
+```
+10rem = 160px
+```
+
+不管嵌套多深，`rem` 都只看：
+
+```
+html {
+  font-size: ?
+}
+```
+
+所以 `rem` 比 `em` 更适合做全局适配。
+
+---
+
+**rem 移动端适配思路**
+
+如果设计稿是 750px，常见方案是：
+
+```
+function setRem() {
+  const width = document.documentElement.clientWidth
+  document.documentElement.style.fontSize = width / 10 + 'px'
+}
+
+setRem()
+window.addEventListener('resize', setRem)
+```
+
+如果屏幕宽度是 375px：
+
+```
+html font-size = 375 / 10 = 37.5px
+```
+
+那么设计稿里的 75px，可以写成：
+
+```
+75 / 75 = 1rem
+```
+
+不同团队换算规则不同，但核心是：
+
+> 根据屏幕宽度动态设置根字号，然后页面尺寸用 rem 表示，实现等比例缩放。
+
+---
+
+**rem 的优点和缺点**
+
+优点：
+
+```
+全局统一缩放
+适合移动端等比例适配
+比 em 稳定
+```
+
+缺点：
+
+```
+需要 JS 或构建工具换算
+大屏下可能过度放大
+不是所有场景都适合等比例缩放
+```
+
+所以实际项目里经常会限制最大宽度：
+
+```
+const width = Math.min(document.documentElement.clientWidth, 750)
+```
+
+避免平板或 PC 上字体巨大。
+
+---
+
+**六、vw / vh**
+
+`vw` 和 `vh` 是视口单位。
+
+```
+1vw = 视口宽度的 1%
+1vh = 视口高度的 1%
+```
+
+比如视口宽度是 375px：
+
+```
+1vw = 3.75px
+100vw = 375px
+```
+
+示例：
+
+```
+.banner {
+  width: 100vw;
+  height: 50vw;
+}
+```
+
+表示 banner 宽度等于视口宽度，高度是视口宽度的一半。
+
+---
+
+**vw 适配设计稿**
+
+如果设计稿宽度是 750px。
+
+设计稿里某个元素宽 75px。
+
+换成 vw：
+
+```
+75 / 750 * 100 = 10vw
+```
+
+所以：
+
+```
+.box {
+  width: 10vw;
+}
+```
+
+屏幕越宽，元素越宽。
+
+---
+
+**vh 的坑**
+
+移动端 `100vh` 有时候不好用。
+
+因为浏览器地址栏会收起 / 展开，导致可视区域变化。
+
+比如：
+
+```
+.page {
+  height: 100vh;
+}
+```
+
+在移动端可能出现底部被遮挡或跳动。
+
+现在可以了解新单位：
+
+```
+100dvh
+100svh
+100lvh
+```
+
+简单理解：
+
+```
+dvh：动态视口高度
+svh：小视口高度
+lvh：大视口高度
+```
+
+面试中提一句即可，不需要深挖。
+
+---
+
+**七、媒体查询**
+
+媒体查询用于根据屏幕宽度、设备特性应用不同样式。
+
+```
+.container {
+  width: 1200px;
+}
+
+@media (max-width: 768px) {
+  .container {
+    width: 100%;
+    padding: 16px;
+  }
+}
+```
+
+意思是：
+
+> 当视口宽度小于等于 768px 时，应用里面的样式。
+
+---
+
+**常见断点**
+
+```
+/* 手机 */
+@media (max-width: 767px) {}
+
+/* 平板 */
+@media (min-width: 768px) and (max-width: 1023px) {}
+
+/* 桌面 */
+@media (min-width: 1024px) {}
+```
+
+响应式布局常见策略：
+
+```
+小屏一列
+中屏两列
+大屏三列或四列
+```
+
+示例：
+
+```
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+```
+
+---
+
+**八、移动端适配常见方案**
+
+**1. viewport + 百分比 / flex**
+
+```
+.layout {
+  display: flex;
+}
+
+.left {
+  flex: 1;
+}
+
+.right {
+  flex: 2;
+}
+```
+
+适合弹性布局。
+
+---
+
+**2. rem 方案**
+
+根据屏幕宽度动态设置 `html font-size`。
+
+适合按设计稿等比例还原。
+
+---
+
+**3. vw 方案**
+
+直接用视口宽度计算。
+
+```
+.box {
+  width: 20vw;
+}
+```
+
+或者配合 PostCSS 插件自动把 px 转 vw。
+
+---
+
+**4. 媒体查询**
+
+适合多端响应式，比如 PC + 平板 + 手机。
+
+---
+
+**5. max-width 居中容器**
+
+很多移动端页面会这样：
+
+```
+.app {
+  max-width: 750px;
+  margin: 0 auto;
+}
+```
+
+避免在大屏上无限拉伸。
+
+---
+
+**九、1px 问题**
+
+移动端常说的 1px 问题是：
+
+> 在高 DPR 屏幕上，CSS 的 1px 会对应多个物理像素，看起来比设计稿里的 1 物理像素更粗。
+
+例如 DPR = 2：
+
+```
+1 CSS px = 2 物理像素
+```
+
+所以：
+
+```
+border: 1px solid #ddd;
+```
+
+在视觉上可能显得偏粗。
+
+---
+
+**解决方案 1：transform scale**
+
+用伪元素画边框，然后缩放。
+
+```
+.hairline {
+  position: relative;
+}
+
+.hairline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  border-bottom: 1px solid #ddd;
+  transform: scaleY(0.5);
+  transform-origin: 0 100%;
+}
+```
+
+在 DPR = 2 的屏幕上，把 1px 缩成 0.5 CSS px，视觉上接近 1 物理像素。
+
+如果 DPR = 3，可以用：
+
+```
+transform: scaleY(0.333);
+```
+
+但通常项目里会用统一 mixin 或组件处理。
+
+---
+
+**解决方案 2：使用 viewport 缩放方案**
+
+有些老移动端方案会根据 DPR 设置 viewport scale。
+
+比如 DPR = 2 时：
+
+```
+<meta name="viewport" content="initial-scale=0.5">
+```
+
+这样 1 CSS px 会更接近 1 物理像素。
+
+但这种方案现在不如以前常用，维护成本高。
+
+---
+
+**解决方案 3：直接接受**
+
+现在很多业务里不一定强求物理 1px。
+
+因为不同设备、不同屏幕显示效果差异很大。
+
+如果对视觉要求不是特别高，直接：
+
+```
+border: 1px solid #eee;
+```
+
+也可以接受。
+
+---
+
+**十、单位怎么选**
+
+|单位|适合场景|
+|---|---|
+|`px`|固定尺寸、边框、图标|
+|`em`|和当前字体大小关联的局部尺寸，比如按钮 padding|
+|`rem`|全局尺寸、移动端等比例适配|
+|`%`|相对于父元素的弹性尺寸|
+|`vw/vh`|相对于视口的尺寸，适合全屏、响应式|
+|`fr`|Grid 中分配剩余空间|
+
+---
+
+**面试版总结**
+
+可以这样说：
+
+> 响应式和移动端适配的核心是让页面在不同屏幕尺寸和不同 DPR 设备上保持合理显示。`px` 是 CSS 像素，不一定等于物理像素；DPR 表示物理像素和 CSS 像素的比例。移动端通常需要设置 viewport，让布局视口等于设备宽度。
+> 
+> `em` 相对于当前元素字体大小，适合做局部跟随文字缩放的尺寸；`rem` 相对于根元素字体大小，适合做全局适配；`vw/vh` 相对于视口宽高，适合直接按屏幕比例布局。响应式布局常用媒体查询，根据不同屏幕宽度切换布局，比如手机一列、平板两列、桌面多列。
+> 
+> 移动端适配常见方案有 viewport + flex/百分比、rem 等比例缩放、vw 适配、媒体查询等。1px 问题是因为高 DPR 屏幕下 1 CSS px 对应多个物理像素，边框看起来偏粗，常用伪元素加 `transform: scaleY(0.5)` 的方式模拟更细的边框。
