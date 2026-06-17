@@ -8061,6 +8061,445 @@ setTimeout 也没机会执行
 > 
 > 微任务的特点是优先级高于宏任务。当前同步代码执行完后，事件循环会先清空所有微任务，包括微任务执行过程中新增的微任务，然后才会进入页面渲染或下一个宏任务。所以 `Promise.then` 通常会比 `setTimeout` 更早执行，但也不能无限创建微任务，否则会阻塞渲染。
 
+
+# Map,Weakmap
+可以，这个题要从三个维度讲：**键的类型、引用强弱、能不能遍历**。
+
+**Map 是什么**
+
+`Map` 是一种键值对集合。
+
+和普通对象相比，`Map` 的 key 可以是任意类型：
+
+```
+const map = new Map()
+
+const obj = { id: 1 }
+
+map.set('name', 'Tom')
+map.set(1, 'number key')
+map.set(obj, 'object key')
+
+console.log(map.get(obj)) // object key
+```
+
+`Map` 的 key 不只限于字符串或 Symbol，对象、函数、数组都可以作为 key。
+
+---
+
+**WeakMap 是什么**
+
+`WeakMap` 也是键值对集合，但它更特殊：
+
+```
+const weakMap = new WeakMap()
+
+const obj = { id: 1 }
+
+weakMap.set(obj, 'some data')
+
+console.log(weakMap.get(obj)) // some data
+```
+
+`WeakMap` 的 key 必须是对象，不能是基本类型。
+
+```
+const weakMap = new WeakMap()
+
+weakMap.set('name', 'Tom') // 报错
+```
+
+因为字符串是基本类型，不能作为 WeakMap 的 key。
+
+---
+
+**区别一：key 类型不同**
+
+`Map` 的 key 可以是任意类型：
+
+```
+const map = new Map()
+
+map.set('a', 1)
+map.set(1, 2)
+map.set(true, 3)
+map.set({}, 4)
+map.set(function () {}, 5)
+```
+
+`WeakMap` 的 key 只能是对象：
+
+```
+const weakMap = new WeakMap()
+
+weakMap.set({}, 1)
+weakMap.set([], 2)
+weakMap.set(function () {}, 3)
+```
+
+不能这样：
+
+```
+weakMap.set('a', 1)
+weakMap.set(1, 2)
+weakMap.set(true, 3)
+```
+
+---
+
+**区别二：引用强弱不同**
+
+这是最核心的区别。
+
+`Map` 对 key 是**强引用**。
+
+```
+let obj = { name: 'Tom' }
+
+const map = new Map()
+map.set(obj, 'user info')
+
+obj = null
+```
+
+虽然你把：
+
+```
+obj = null
+```
+
+但 `Map` 里面还保存着这个对象作为 key。
+
+所以这个对象不会被垃圾回收。
+
+因为：
+
+```
+Map 还强引用着这个对象
+```
+
+如果你不手动删除：
+
+```
+map.delete(obj)
+```
+
+或者清空：
+
+```
+map.clear()
+```
+
+对象就可能一直留在内存里。
+
+---
+
+`WeakMap` 对 key 是**弱引用**。
+
+```
+let obj = { name: 'Tom' }
+
+const weakMap = new WeakMap()
+weakMap.set(obj, 'user info')
+
+obj = null
+```
+
+当外部没有其他地方引用这个对象时，即使它曾经作为 WeakMap 的 key，垃圾回收机制也可以回收它。
+
+因为：
+
+```
+WeakMap 不会阻止 key 被垃圾回收
+```
+
+这就是 WeakMap 名字里 `Weak` 的含义。
+
+---
+
+**怎么理解强引用和弱引用**
+
+强引用：
+
+```
+let obj = { name: 'Tom' }
+
+const arr = [obj]
+
+obj = null
+```
+
+虽然 `obj` 变量不指向这个对象了，但数组里还引用着它。
+
+所以对象还活着。
+
+弱引用：
+
+```
+let obj = { name: 'Tom' }
+
+const weakMap = new WeakMap()
+weakMap.set(obj, 'data')
+
+obj = null
+```
+
+如果除了 WeakMap，没有其他引用了，对象可以被回收。
+
+WeakMap 不会“拦着”垃圾回收。
+
+---
+
+**区别三：WeakMap 不能遍历**
+
+`Map` 可以遍历：
+
+```
+const map = new Map()
+
+map.set('a', 1)
+map.set('b', 2)
+
+for (const [key, value] of map) {
+  console.log(key, value)
+}
+
+console.log(map.keys())
+console.log(map.values())
+console.log(map.entries())
+console.log(map.size)
+```
+
+`WeakMap` 不能遍历：
+
+```
+const weakMap = new WeakMap()
+
+weakMap.set({}, 1)
+
+weakMap.keys() // 不存在
+weakMap.values() // 不存在
+weakMap.entries() // 不存在
+weakMap.size // undefined
+```
+
+为什么 WeakMap 不能遍历？
+
+因为它的 key 可能随时被垃圾回收。
+
+如果允许遍历，那你就能观察到垃圾回收什么时候发生。
+
+而垃圾回收是不确定的，由 JS 引擎自己决定。
+
+所以 WeakMap 不提供遍历能力，也没有 `size`。
+
+---
+
+**Map 常用 API**
+
+```
+const map = new Map()
+
+map.set('name', 'Tom')
+map.get('name') // Tom
+map.has('name') // true
+map.delete('name')
+map.clear()
+map.size
+```
+
+遍历：
+
+```
+for (const [key, value] of map) {
+  console.log(key, value)
+}
+```
+
+---
+
+**WeakMap 常用 API**
+
+WeakMap API 很少：
+
+```
+const weakMap = new WeakMap()
+const obj = {}
+
+weakMap.set(obj, 'data')
+weakMap.get(obj)
+weakMap.has(obj)
+weakMap.delete(obj)
+```
+
+没有：
+
+```
+weakMap.size
+weakMap.clear()
+weakMap.keys()
+weakMap.values()
+weakMap.entries()
+```
+
+---
+
+**WeakMap 有什么用**
+
+**1. 存储对象的私有数据**
+
+```
+const privateData = new WeakMap()
+
+class User {
+  constructor(name) {
+    privateData.set(this, { name })
+  }
+
+  getName() {
+    return privateData.get(this).name
+  }
+}
+
+const user = new User('Tom')
+
+console.log(user.getName()) // Tom
+console.log(user.name) // undefined
+```
+
+这里 `privateData` 里用实例对象作为 key。
+
+外部访问不到 WeakMap 中的数据。
+
+当 `user` 不再被引用时，对应的私有数据也可以被回收。
+
+---
+
+**2. 给 DOM 元素绑定额外数据**
+
+```
+const elementData = new WeakMap()
+
+const button = document.querySelector('button')
+
+elementData.set(button, {
+  clicked: 0
+})
+
+button.addEventListener('click', () => {
+  const data = elementData.get(button)
+  data.clicked++
+})
+```
+
+如果这个 DOM 元素从页面移除，并且没有其他引用，WeakMap 不会阻止它被回收。
+
+这可以减少内存泄漏风险。
+
+---
+
+**3. 缓存对象计算结果**
+
+```
+const cache = new WeakMap()
+
+function compute(obj) {
+  if (cache.has(obj)) {
+    return cache.get(obj)
+  }
+
+  const result = expensiveCompute(obj)
+  cache.set(obj, result)
+
+  return result
+}
+```
+
+当 `obj` 不再使用时，缓存也能跟着被回收。
+
+如果用 `Map`，就可能导致缓存越来越大。
+
+---
+
+**Map 适合什么场景**
+
+适合需要明确管理、遍历、统计的键值数据：
+
+```
+const userMap = new Map()
+
+userMap.set('001', { name: 'Tom' })
+userMap.set('002', { name: 'Jerry' })
+
+console.log(userMap.size)
+
+for (const [id, user] of userMap) {
+  console.log(id, user)
+}
+```
+
+比如：
+
+```
+字典数据
+缓存列表
+需要遍历的集合
+需要 size 的集合
+```
+
+---
+
+**WeakMap 适合什么场景**
+
+适合：
+
+```
+key 是对象
+数据依附于对象生命周期
+不需要遍历
+希望避免内存泄漏
+```
+
+比如：
+
+```
+DOM 元素元数据
+对象私有属性
+对象级缓存
+框架内部保存实例关系
+```
+
+Vue 3 响应式系统内部就大量使用 WeakMap 来保存对象和依赖之间的关系，因为响应式目标对象不再使用时，相关依赖关系也应该能被回收。
+
+---
+
+**对比总结**
+
+|对比项|Map|WeakMap|
+|---|---|---|
+|key 类型|任意类型|只能是对象|
+|对 key 的引用|强引用|弱引用|
+|是否阻止 GC|会|不会|
+|是否可遍历|可以|不可以|
+|是否有 size|有|没有|
+|是否有 clear|有|没有|
+|常见用途|普通键值存储、可遍历缓存|私有数据、DOM 元数据、对象缓存|
+|内存泄漏风险|相对更高，需要手动 delete|较低，key 可被自动回收|
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> `Map` 和 `WeakMap` 都是键值对集合。`Map` 的 key 可以是任意类型，并且是强引用，所以只要 key 存在于 Map 中，对应对象就不会被垃圾回收；Map 可以遍历，有 `size`、`keys`、`values`、`entries` 等方法。
+> 
+> `WeakMap` 的 key 只能是对象，并且对 key 是弱引用。如果某个对象除了 WeakMap 之外没有其他引用，那么这个对象可以被垃圾回收，WeakMap 不会阻止它释放。因此 WeakMap 不能遍历，也没有 `size`，因为它的 key 可能随时被回收。
+> 
+> 实际使用上，Map 适合普通键值存储、需要遍历或统计 size 的场景；WeakMap 适合把数据绑定到对象生命周期上，比如对象私有属性、DOM 元素元数据、对象缓存，能够降低内存泄漏风险。
+
+22:19
+
 # Promise 
 这题可以按四层答：**解决什么问题、有什么特点、常用 API、和传统回调 / XHR 的差异**。
 
