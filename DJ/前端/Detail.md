@@ -7667,6 +7667,400 @@ document.documentElement.scrollHeight
 > 
 > 窗口尺寸里，`window.innerWidth` 表示视口内部宽度，通常包含滚动条；`document.documentElement.clientWidth` 表示根元素可视宽度，通常不包含滚动条，更常用于布局计算。`screen.width` 是整个屏幕宽度，不等于浏览器视口宽度。
 
+
+# 微任务
+
+> **微任务是“当前这轮同步代码执行完后、下一个宏任务开始前，马上要清掉的一批小回调”。**
+
+它们的共同点是：**优先级高、执行时机靠前、会在当前宏任务结束后立刻执行**。
+
+---
+
+**先记住微任务的执行位置**
+
+```
+console.log('script start')
+
+setTimeout(() => {
+  console.log('timeout')
+}, 0)
+
+Promise.resolve().then(() => {
+  console.log('promise then')
+})
+
+queueMicrotask(() => {
+  console.log('queueMicrotask')
+})
+
+console.log('script end')
+```
+
+执行顺序：
+
+```
+script start
+script end
+promise then
+queueMicrotask
+timeout
+```
+
+为什么？
+
+因为整段 script 本身是一个宏任务。
+
+这个宏任务里：
+
+```
+同步代码先执行
+微任务放进微任务队列
+setTimeout 放进宏任务队列
+```
+
+当前 script 宏任务结束后，浏览器先清空微任务：
+
+```
+Promise.then
+queueMicrotask
+```
+
+然后才执行下一个宏任务：
+
+```
+setTimeout
+```
+
+---
+
+**一、Promise.then 怎么理解**
+
+`Promise.then` 是最常见的微任务。
+
+```
+Promise.resolve().then(() => {
+  console.log('then')
+})
+```
+
+它的意思不是“立刻执行 then 里的回调”。
+
+而是：
+
+> Promise 状态确定后，把 then 回调放入微任务队列，等当前同步代码执行完再执行。
+
+例如：
+
+```
+const p = Promise.resolve()
+
+p.then(() => {
+  console.log(1)
+})
+
+console.log(2)
+```
+
+输出：
+
+```
+2
+1
+```
+
+因为：
+
+```
+console.log(2)
+```
+
+是同步代码，先执行。
+
+`then` 回调是微任务，后执行。
+
+记忆方式：
+
+```
+Promise.then：本轮任务收尾时执行
+```
+
+你可以把它理解成：
+
+> “我不打断当前同步代码，但我想尽快执行。”
+
+---
+
+**二、queueMicrotask 怎么理解**
+
+`queueMicrotask` 是浏览器提供的一个 API，用来**直接往微任务队列里塞一个回调**。
+
+```
+queueMicrotask(() => {
+  console.log('microtask')
+})
+```
+
+它和：
+
+```
+Promise.resolve().then(() => {
+  console.log('microtask')
+})
+```
+
+执行时机类似。
+
+区别是：
+
+```
+queueMicrotask 语义更直接
+Promise.then 是借 Promise 间接创建微任务
+```
+
+比如你写工具函数时，想让某个回调延后到同步代码之后、但又比 setTimeout 更早：
+
+```
+function updateLater(callback) {
+  queueMicrotask(callback)
+}
+
+console.log('start')
+
+updateLater(() => {
+  console.log('update')
+})
+
+console.log('end')
+```
+
+输出：
+
+```
+start
+end
+update
+```
+
+记忆方式：
+
+```
+queueMicrotask：手动插队到微任务队列
+```
+
+它就是最直白的：
+
+> “把这个函数放进微任务队列。”
+
+---
+
+**三、MutationObserver 怎么理解**
+
+`MutationObserver` 用来监听 DOM 变化。
+
+比如监听某个元素的子节点变化：
+
+```
+const target = document.querySelector('#app')
+
+const observer = new MutationObserver(() => {
+  console.log('DOM changed')
+})
+
+observer.observe(target, {
+  childList: true
+})
+
+target.appendChild(document.createElement('div'))
+
+console.log('end')
+```
+
+输出通常是：
+
+```
+end
+DOM changed
+```
+
+为什么？
+
+因为 DOM 变化发生后，`MutationObserver` 的回调不会立刻同步执行，而是作为微任务执行。
+
+它适合监听：
+
+```
+DOM 子节点变化
+属性变化
+文本变化
+```
+
+比如：
+
+```
+observer.observe(target, {
+  childList: true,
+  attributes: true,
+  characterData: true,
+  subtree: true
+})
+```
+
+记忆方式：
+
+```
+MutationObserver：DOM 变了，等当前同步代码结束后统一通知你
+```
+
+为什么不立刻通知？
+
+因为同步代码里可能连续改很多次 DOM：
+
+```
+target.appendChild(a)
+target.appendChild(b)
+target.appendChild(c)
+```
+
+如果每改一次就同步执行回调，性能很差。
+
+所以浏览器会把 DOM 变化收集起来，放到微任务阶段统一回调。
+
+---
+
+**四、这三个怎么一起记**
+
+可以这样记：
+
+```
+Promise.then：异步结果准备好了，尽快回调
+queueMicrotask：我主动安排一个微任务
+MutationObserver：DOM 变化后，浏览器安排一个微任务通知我
+```
+
+再压缩成一句：
+
+```
+Promise 处理异步结果
+queueMicrotask 手动排微任务
+MutationObserver 监听 DOM 变化
+```
+
+---
+
+**五、它们和 setTimeout 的区别**
+
+```
+console.log('start')
+
+setTimeout(() => {
+  console.log('timeout')
+}, 0)
+
+queueMicrotask(() => {
+  console.log('microtask')
+})
+
+console.log('end')
+```
+
+输出：
+
+```
+start
+end
+microtask
+timeout
+```
+
+因为：
+
+```
+微任务在当前宏任务结束后立刻清空
+setTimeout 是下一个宏任务
+```
+
+所以微任务比 `setTimeout` 更早。
+
+---
+
+**六、微任务会全部清空**
+
+这个很重要。
+
+```
+Promise.resolve().then(() => {
+  console.log(1)
+
+  Promise.resolve().then(() => {
+    console.log(2)
+  })
+})
+
+Promise.resolve().then(() => {
+  console.log(3)
+})
+```
+
+输出：
+
+```
+1
+3
+2
+```
+
+过程：
+
+```
+初始微任务队列：then1, then3
+执行 then1：输出 1，又加入 then2
+队列变成：then3, then2
+执行 then3：输出 3
+执行 then2：输出 2
+```
+
+也就是说：
+
+> 当前宏任务结束后，会一直清空微任务队列，期间新加入的微任务也会继续执行。
+
+---
+
+**七、为什么微任务不能滥用**
+
+因为微任务必须清空后，浏览器才有机会渲染和执行下一个宏任务。
+
+如果你这样写：
+
+```
+function loop() {
+  queueMicrotask(loop)
+}
+
+loop()
+```
+
+微任务会无限产生。
+
+结果是：
+
+```
+微任务队列永远清不完
+页面无法渲染
+setTimeout 也没机会执行
+```
+
+这会导致页面卡死。
+
+---
+
+**八、面试版回答**
+
+可以这样说：
+
+> 微任务是在当前宏任务执行完成后、下一个宏任务开始前执行的一类任务。常见微任务有 `Promise.then`、`queueMicrotask`、`MutationObserver`。`Promise.then` 表示 Promise 状态确定后的回调，会进入微任务队列；`queueMicrotask` 是直接手动往微任务队列里添加任务；`MutationObserver` 用来监听 DOM 变化，它的回调也会在微任务阶段统一执行。
+> 
+> 微任务的特点是优先级高于宏任务。当前同步代码执行完后，事件循环会先清空所有微任务，包括微任务执行过程中新增的微任务，然后才会进入页面渲染或下一个宏任务。所以 `Promise.then` 通常会比 `setTimeout` 更早执行，但也不能无限创建微任务，否则会阻塞渲染。
+
 # 虚拟dom
 **虚拟 DOM 是什么**
 
