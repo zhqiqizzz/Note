@@ -8061,6 +8061,635 @@ setTimeout 也没机会执行
 > 
 > 微任务的特点是优先级高于宏任务。当前同步代码执行完后，事件循环会先清空所有微任务，包括微任务执行过程中新增的微任务，然后才会进入页面渲染或下一个宏任务。所以 `Promise.then` 通常会比 `setTimeout` 更早执行，但也不能无限创建微任务，否则会阻塞渲染。
 
+# Promise 
+这题可以按四层答：**解决什么问题、有什么特点、常用 API、和传统回调 / XHR 的差异**。
+
+**1. Promise 解决什么问题**
+
+Promise 主要解决的是：**异步流程管理问题**。
+
+早期异步代码经常是回调函数：
+
+```
+ajax('/user', function (user) {
+  ajax('/orders?userId=' + user.id, function (orders) {
+    ajax('/detail?id=' + orders[0].id, function (detail) {
+      console.log(detail)
+    })
+  })
+})
+```
+
+这种代码有几个问题：
+
+- 回调嵌套很深，也叫回调地狱
+- 错误处理分散，每一层都要处理错误
+- 异步任务的状态不清晰
+- 多个异步任务并发、串行组合都不方便
+
+Promise 把一个异步任务抽象成一个对象：
+
+```
+const p = new Promise((resolve, reject) => {
+  // 异步操作
+})
+```
+
+然后用链式调用组织流程：
+
+```
+getUser()
+  .then(user => getOrders(user.id))
+  .then(orders => getDetail(orders[0].id))
+  .then(detail => {
+    console.log(detail)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+```
+
+这样比嵌套回调更清晰。
+
+一句话：
+
+> Promise 用来描述一个未来才会完成的异步结果，让异步代码可以链式调用、统一处理成功和失败，并方便组合多个异步任务。
+
+---
+
+**2. Promise 有哪些特点**
+
+**状态固定**
+
+Promise 有三种状态：
+
+```
+pending：进行中
+fulfilled：成功
+rejected：失败
+```
+
+状态只能从：
+
+```
+pending -> fulfilled
+pending -> rejected
+```
+
+一旦状态确定，就不会再改变。
+
+比如：
+
+```
+const p = new Promise((resolve, reject) => {
+  resolve('success')
+  reject('error')
+})
+
+p.then(res => {
+  console.log(res)
+}).catch(err => {
+  console.log(err)
+})
+```
+
+最终只会输出：
+
+```
+success
+```
+
+因为第一次 `resolve` 后状态已经固定，后面的 `reject` 无效。
+
+---
+
+**then 回调是异步执行的**
+
+即使 Promise 已经成功，`then` 也不会同步执行，而是进入微任务队列。
+
+```
+Promise.resolve().then(() => {
+  console.log(1)
+})
+
+console.log(2)
+```
+
+输出：
+
+```
+2
+1
+```
+
+---
+
+**支持链式调用**
+
+`then` 会返回一个新的 Promise。
+
+```
+Promise.resolve(1)
+  .then(res => res + 1)
+  .then(res => res + 1)
+  .then(res => {
+    console.log(res)
+  })
+```
+
+输出：
+
+```
+3
+```
+
+如果 `then` 返回普通值，会作为下一个 `then` 的成功结果。
+
+如果返回 Promise，会等待这个 Promise 完成。
+
+```
+getUser()
+  .then(user => {
+    return getOrders(user.id)
+  })
+  .then(orders => {
+    console.log(orders)
+  })
+```
+
+---
+
+**错误可以冒泡**
+
+```
+Promise.resolve()
+  .then(() => {
+    throw new Error('error')
+  })
+  .then(() => {
+    console.log('不会执行')
+  })
+  .catch(err => {
+    console.log(err.message)
+  })
+```
+
+错误会一直传递到最近的 `catch`。
+
+---
+
+**3. Promise 常用 API**
+
+**Promise.resolve**
+
+创建一个成功状态的 Promise：
+
+```
+Promise.resolve('ok').then(res => {
+  console.log(res)
+})
+```
+
+---
+
+**Promise.reject**
+
+创建一个失败状态的 Promise：
+
+```
+Promise.reject(new Error('fail')).catch(err => {
+  console.log(err.message)
+})
+```
+
+---
+
+**then**
+
+处理成功结果：
+
+```
+promise.then(res => {
+  console.log(res)
+})
+```
+
+也可以传两个参数：
+
+```
+promise.then(
+  res => {},
+  err => {}
+)
+```
+
+但项目中更常用：
+
+```
+promise.then(res => {}).catch(err => {})
+```
+
+---
+
+**catch**
+
+处理失败：
+
+```
+promise.catch(err => {
+  console.log(err)
+})
+```
+
+等价于：
+
+```
+promise.then(null, err => {})
+```
+
+---
+
+**finally**
+
+不管成功还是失败都会执行：
+
+```
+request()
+  .then(res => {
+    console.log(res)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+  .finally(() => {
+    loading.value = false
+  })
+```
+
+常用于关闭 loading、清理状态。
+
+---
+
+**Promise.all**
+
+多个 Promise 全部成功才成功。
+
+```
+Promise.all([
+  getUser(),
+  getOrders(),
+  getConfig()
+]).then(([user, orders, config]) => {
+  console.log(user, orders, config)
+})
+```
+
+特点：
+
+```
+全部 fulfilled -> 返回所有结果数组
+任意一个 rejected -> 整体立刻 rejected
+```
+
+---
+
+**Promise.allSettled**
+
+等待所有 Promise 都结束，不管成功还是失败。
+
+```
+Promise.allSettled([
+  getUser(),
+  getOrders(),
+  getConfig()
+]).then(results => {
+  console.log(results)
+})
+```
+
+结果类似：
+
+```
+[
+  { status: 'fulfilled', value: user },
+  { status: 'rejected', reason: error },
+  { status: 'fulfilled', value: config }
+]
+```
+
+特点：
+
+```
+不会因为某一个失败就整体失败
+会等所有任务都有结果
+```
+
+---
+
+**Promise.race**
+
+谁先完成，就采用谁的结果，不管成功还是失败。
+
+```
+Promise.race([
+  fetchData(),
+  timeout(3000)
+])
+```
+
+常用于超时控制。
+
+---
+
+**Promise.any**
+
+只要有一个成功，就成功。
+
+```
+Promise.any([
+  requestA(),
+  requestB(),
+  requestC()
+]).then(res => {
+  console.log(res)
+})
+```
+
+特点：
+
+```
+第一个 fulfilled -> 成功
+全部 rejected -> 失败，返回 AggregateError
+```
+
+和 `race` 不同：
+
+```
+race：第一个 settled，不管成功失败
+any：第一个成功
+```
+
+---
+
+**4. all 和 allSettled 的区别**
+
+这是高频。
+
+`Promise.all`：
+
+```
+Promise.all([
+  Promise.resolve(1),
+  Promise.reject('error'),
+  Promise.resolve(3)
+]).then(res => {
+  console.log(res)
+}).catch(err => {
+  console.log(err)
+})
+```
+
+输出：
+
+```
+error
+```
+
+只要有一个失败，整体就失败，不会给你完整结果数组。
+
+适合：
+
+> 多个请求都必须成功，缺一个都不行。
+
+比如：
+
+```
+页面初始化必须同时拿到用户信息、权限、菜单
+```
+
+---
+
+`Promise.allSettled`：
+
+```
+Promise.allSettled([
+  Promise.resolve(1),
+  Promise.reject('error'),
+  Promise.resolve(3)
+]).then(res => {
+  console.log(res)
+})
+```
+
+输出：
+
+```
+[
+  { status: 'fulfilled', value: 1 },
+  { status: 'rejected', reason: 'error' },
+  { status: 'fulfilled', value: 3 }
+]
+```
+
+不会因为某个失败中断。
+
+适合：
+
+> 多个任务互不依赖，希望知道每个任务最终结果。
+
+比如：
+
+```
+批量上传
+批量请求多个模块数据
+多个接口有的失败也不影响整体展示
+```
+
+一句话：
+
+```
+all：全成功才成功，一个失败就失败
+allSettled：不管成功失败，都等所有任务结束并返回每个结果
+```
+
+---
+
+**5. Promise 和 XMLHttpRequest 的使用差异**
+
+这里要先明确：
+
+> Promise 是一种异步编程方案；XMLHttpRequest 是浏览器提供的网络请求 API。它们不是同一层东西。
+
+XMLHttpRequest 用回调事件处理请求：
+
+```
+const xhr = new XMLHttpRequest()
+
+xhr.open('GET', '/api/user')
+
+xhr.onreadystatechange = function () {
+  if (xhr.readyState === 4) {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      console.log(JSON.parse(xhr.responseText))
+    } else {
+      console.log('请求失败')
+    }
+  }
+}
+
+xhr.onerror = function () {
+  console.log('网络错误')
+}
+
+xhr.send()
+```
+
+特点：
+
+```
+基于事件 / 回调
+状态通过 readyState 判断
+代码比较繁琐
+错误处理分散
+不天然支持链式调用
+```
+
+---
+
+Promise 写法一般更清晰。
+
+比如用 `fetch`：
+
+```
+fetch('/api/user')
+  .then(res => res.json())
+  .then(data => {
+    console.log(data)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+```
+
+或者 axios：
+
+```
+axios.get('/api/user')
+  .then(res => {
+    console.log(res.data)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+```
+
+特点：
+
+```
+链式调用
+错误可统一 catch
+更容易组合多个异步任务
+可以配合 async/await
+```
+
+---
+
+**XHR 也可以封装成 Promise**
+
+```
+function request(url) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    xhr.open('GET', url)
+
+    xhr.onload = function () {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText))
+      } else {
+        reject(new Error(xhr.statusText))
+      }
+    }
+
+    xhr.onerror = function () {
+      reject(new Error('Network Error'))
+    }
+
+    xhr.send()
+  })
+}
+
+request('/api/user')
+  .then(data => {
+    console.log(data)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+```
+
+这样就把 XHR 的回调风格包装成 Promise 风格。
+
+---
+
+**Promise 和 XHR 关键区别**
+
+|对比|Promise|XMLHttpRequest|
+|---|---|---|
+|本质|异步编程模型|浏览器网络请求 API|
+|作用|管理异步结果|发送 HTTP 请求|
+|写法|`then/catch/finally`|事件回调、readyState|
+|组合能力|`all/race/allSettled/any`|原生组合不方便|
+|错误处理|可链式 catch|分散在事件回调中|
+|是否能发请求|不能单独发请求|可以发请求|
+|是否能取消|原生 Promise 不能取消|XHR 可以 `abort()`|
+
+注意：
+
+> Promise 本身不会发送请求，发送请求的是 XHR、fetch、axios 这类 API。Promise 只是用来管理异步请求的结果。
+
+---
+
+**6. async/await 和 Promise 的关系**
+
+`async/await` 是 Promise 的语法糖。
+
+```
+async function getData() {
+  try {
+    const res = await fetch('/api/user')
+    const data = await res.json()
+    console.log(data)
+  } catch (err) {
+    console.log(err)
+  }
+}
+```
+
+它看起来像同步代码，但本质还是 Promise。
+
+```
+await xxx
+```
+
+后面的代码会在 Promise 完成后继续执行。
+
+面试可以顺带提：
+
+> async/await 让 Promise 链式调用写起来更像同步流程，但底层仍然是 Promise。
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> Promise 主要解决异步流程管理问题，避免传统回调嵌套过深、错误处理分散、多个异步任务组合困难。Promise 有三种状态：pending、fulfilled、rejected，状态一旦从 pending 变成成功或失败就不可再改变；`then` 回调会进入微任务队列异步执行；`then` 会返回新的 Promise，所以支持链式调用，错误可以通过 `catch` 统一处理。
+> 
+> 常用 API 有 `Promise.resolve`、`Promise.reject`、`then`、`catch`、`finally`、`all`、`allSettled`、`race`、`any`。`Promise.all` 是所有任务都成功才成功，只要一个失败整体就失败；`Promise.allSettled` 会等待所有任务结束，不管成功失败，返回每个任务的状态和值或原因。
+> 
+> Promise 和 XMLHttpRequest 不是同一层概念。XHR 是浏览器提供的网络请求 API，基于事件和回调发送 HTTP 请求；Promise 是异步编程模型，本身不发送请求，只负责管理异步结果。XHR 可以被封装成 Promise，从而获得链式调用、统一错误处理和并发组合能力。
+
 # 虚拟dom
 **虚拟 DOM 是什么**
 
