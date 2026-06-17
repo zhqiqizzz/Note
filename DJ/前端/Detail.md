@@ -10664,3 +10664,589 @@ FPS meter
 > 如果修改 `width`、`height`、`margin`、`display`、`top/left` 等影响几何信息的属性，会触发回流，回流后通常还会重绘。如果只是修改 `color`、`background-color`、`visibility` 这类不影响布局的属性，通常只触发重绘。`transform` 和 `opacity` 不影响布局，很多情况下可以跳过 layout 和 paint，只在合成阶段处理，所以动画性能更好。
 > 
 > 优化时要减少强制同步布局，避免在循环里反复“写样式、读布局”，做到读写分离；动画优先使用 `transform` 和 `opacity`；谨慎使用 `will-change`；必要时用 `requestAnimationFrame` 做 JS 动画，并通过 DevTools Performance 面板观察 Layout、Paint 和 FPS。
+
+
+## 工程化 CSS
+
+这部分面试关注的不是“你会不会写样式”，而是：
+
+> 项目变大后，如何让 CSS 可维护、可复用、不会互相污染。
+
+核心问题有几个：
+
+```
+样式污染
+命名冲突
+样式复用
+主题定制
+构建能力
+团队规范
+```
+
+**一、为什么需要 CSS 工程化**
+
+原生 CSS 是全局生效的。
+
+比如 A 组件写：
+
+```
+.title {
+  color: red;
+}
+```
+
+B 组件也写：
+
+```
+.title {
+  color: blue;
+}
+```
+
+如果它们都被打包到页面里，后加载的可能覆盖前面的。
+
+这就是样式污染。
+
+所以工程化 CSS 要解决：
+
+```
+如何让样式只作用于当前组件？
+如何避免 class 命名冲突？
+如何复用变量、函数、公共样式？
+如何统一团队写法？
+```
+
+---
+
+**二、scoped**
+
+Vue 单文件组件里常见：
+
+```
+<template>
+  <div class="card">
+    <h2 class="title">标题</h2>
+  </div>
+</template>
+
+<style scoped>
+.card {
+  padding: 16px;
+}
+
+.title {
+  color: red;
+}
+</style>
+```
+
+`scoped` 的原理不是 Shadow DOM，而是编译时给元素和选择器加唯一属性。
+
+大概会编译成：
+
+```
+<div class="card" data-v-abc123>
+  <h2 class="title" data-v-abc123>标题</h2>
+</div>
+```
+
+CSS 变成：
+
+```
+.card[data-v-abc123] {
+  padding: 16px;
+}
+
+.title[data-v-abc123] {
+  color: red;
+}
+```
+
+这样样式只会命中当前组件里的元素。
+
+**scoped 的优点：**
+
+```
+简单好用
+适合 Vue 组件级样式隔离
+不容易污染其他组件
+```
+
+**scoped 的注意点：**
+
+父组件的 scoped 样式默认影响不到子组件内部结构。如果要穿透子组件样式，要用深度选择器。
+
+Vue3 常见：
+
+```
+:deep(.el-button) {
+  border-radius: 4px;
+}
+```
+
+比如改 Element Plus 内部样式时会用到。
+
+但要注意：
+
+> `:deep()` 用多了，本质上还是在打破样式隔离，维护成本会上升。
+
+---
+
+**三、CSS Modules**
+
+CSS Modules 常见于 React，也可以用于 Vue。
+
+写法：
+
+```
+/* Button.module.css */
+.button {
+  color: white;
+  background: blue;
+}
+
+.primary {
+  border-radius: 4px;
+}
+```
+
+组件中使用：
+
+```
+import styles from './Button.module.css'
+
+export default function Button() {
+  return (
+    <button className={styles.button}>
+      按钮
+    </button>
+  )
+}
+```
+
+构建后 class 会被转换成唯一名字：
+
+```
+<button class="Button_button__a8x3k">
+  按钮
+</button>
+```
+
+CSS 也变成：
+
+```
+.Button_button__a8x3k {
+  color: white;
+  background: blue;
+}
+```
+
+所以不同文件里即使都写 `.button`，也不会冲突。
+
+**CSS Modules 的特点：**
+
+```
+局部作用域
+class 名自动 hash
+适合组件化项目
+和 JS 模块系统结合紧密
+```
+
+如果要写全局样式，可以用：
+
+```
+:global(.reset) {
+  margin: 0;
+}
+```
+
+面试可以说：
+
+> CSS Modules 是通过构建工具把 class 名编译成唯一标识，从而实现样式局部作用域。
+
+---
+
+**四、scoped 和 CSS Modules 的区别**
+
+|对比|scoped|CSS Modules|
+|---|---|---|
+|常见场景|Vue SFC|React / Vue 都可|
+|原理|给 DOM 和选择器加属性选择器|class 名 hash|
+|使用方式|直接写 class|通过 `styles.xxx` 引用|
+|隔离粒度|组件级|模块文件级|
+|全局样式|`:global` / 普通 style|`:global`|
+
+简单说：
+
+```
+Vue scoped：靠 data-v 属性隔离
+CSS Modules：靠 class 名 hash 隔离
+```
+
+---
+
+**五、Sass / Less**
+
+Sass 和 Less 都是 CSS 预处理器。
+
+它们解决的是：
+
+> 原生 CSS 早期缺少变量、嵌套、函数、混入等能力，写复杂样式不方便。
+
+虽然现在 CSS 原生已经支持变量、嵌套也越来越普及，但 Sass/Less 在企业项目里仍然很常见。
+
+---
+
+**1. 变量**
+
+Sass：
+
+```
+$primary-color: #409eff;
+
+.button {
+  color: $primary-color;
+}
+```
+
+Less：
+
+```
+@primary-color: #409eff;
+
+.button {
+  color: @primary-color;
+}
+```
+
+适合统一主题色、间距、字号。
+
+---
+
+**2. 嵌套**
+
+```
+.card {
+  padding: 16px;
+
+  .title {
+    font-size: 18px;
+  }
+
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+}
+```
+
+会编译成：
+
+```
+.card {
+  padding: 16px;
+}
+
+.card .title {
+  font-size: 18px;
+}
+
+.card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+```
+
+注意嵌套不要太深，否则选择器复杂、维护困难。
+
+一般建议不要超过 3 层。
+
+---
+
+**3. mixin 混入**
+
+```
+@mixin flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal {
+  @include flex-center;
+}
+```
+
+适合复用一组样式。
+
+---
+
+**4. 函数和计算**
+
+```
+@function px-to-rem($px) {
+  @return $px / 16 * 1rem;
+}
+
+.title {
+  font-size: px-to-rem(24);
+}
+```
+
+---
+
+**Sass/Less 面试回答**
+
+可以说：
+
+> Sass/Less 是 CSS 预处理器，提供变量、嵌套、mixin、函数、模块拆分等能力，可以提升样式复用和维护性。它们最终都会被构建工具编译成普通 CSS。实际项目中会用变量管理主题色和间距，用 mixin 封装重复样式，但要避免嵌套过深导致选择器复杂。
+
+---
+
+**六、Tailwind CSS**
+
+Tailwind 是一种原子化 CSS 框架。
+
+它不是这样写：
+
+```
+.card {
+  padding: 16px;
+  background: white;
+  border-radius: 8px;
+}
+```
+
+而是在 HTML / JSX / Vue 模板里直接写工具类：
+
+```
+<div class="p-4 bg-white rounded shadow text-gray-800">
+  内容
+</div>
+```
+
+这些类分别表示：
+
+```
+p-4：padding
+bg-white：背景色
+rounded：圆角
+shadow：阴影
+text-gray-800：文字颜色
+```
+
+---
+
+**Tailwind 的优点**
+
+```
+不用频繁起 class 名
+样式约束统一
+开发速度快
+天然避免很多全局样式污染
+最终可按需生成 CSS，体积可控
+```
+
+比如团队统一了 spacing scale：
+
+```
+p-2
+p-4
+p-6
+```
+
+就不会每个人随便写：
+
+```
+padding: 13px;
+padding: 17px;
+```
+
+设计一致性更好。
+
+---
+
+**Tailwind 的缺点**
+
+```
+模板里 class 很长
+初学可读性不适应
+复杂状态下 class 管理成本高
+需要团队统一规范
+```
+
+比如：
+
+```
+<button class="inline-flex items-center justify-center rounded px-3 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+  提交
+</button>
+```
+
+看起来会比较长。
+
+所以大型项目里通常会结合组件封装，把复杂 class 收到组件内部。
+
+---
+
+**Tailwind 适合什么场景**
+
+适合：
+
+```
+中后台
+快速搭建 UI
+设计系统约束明确的项目
+组件化项目
+```
+
+不适合：
+
+```
+团队完全不接受原子类
+强依赖传统语义 class 的老项目
+极复杂的定制视觉但没有组件封装
+```
+
+---
+
+**七、命名规范**
+
+如果项目不用 scoped / CSS Modules / Tailwind，而是传统 CSS，就需要命名规范。
+
+常见是 BEM。
+
+BEM 全称：
+
+```
+Block Element Modifier
+```
+
+写法：
+
+```
+.card {}
+.card__title {}
+.card__body {}
+.card--active {}
+```
+
+对应：
+
+```
+<div class="card card--active">
+  <h2 class="card__title">标题</h2>
+  <div class="card__body">内容</div>
+</div>
+```
+
+含义：
+
+```
+Block：独立模块，比如 card
+Element：模块内部元素，比如 card__title
+Modifier：状态或变体，比如 card--active
+```
+
+优点：
+
+```
+命名清晰
+减少冲突
+不用依赖构建工具
+适合传统项目和公共样式库
+```
+
+缺点：
+
+```
+class 名较长
+写起来繁琐
+```
+
+---
+
+**八、样式隔离方案总结**
+
+常见隔离方式：
+
+```
+命名规范：靠人为约束，比如 BEM
+scoped：Vue 编译时加 data-v 属性
+CSS Modules：构建时 class hash
+CSS-in-JS：样式写在 JS 中，运行时或编译时生成唯一 class
+Shadow DOM：浏览器原生隔离
+Tailwind：通过原子类减少自定义样式冲突
+```
+
+---
+
+**Shadow DOM 简单了解**
+
+Web Components 里有 Shadow DOM。
+
+```
+const shadow = element.attachShadow({ mode: 'open' })
+shadow.innerHTML = `
+  <style>
+    p { color: red; }
+  </style>
+  <p>Hello</p>
+`
+```
+
+Shadow DOM 里的样式默认不会影响外部，外部样式也不容易影响内部。
+
+是真正的浏览器级样式隔离。
+
+但在普通 Vue/React 业务项目里，不如 scoped、CSS Modules 常见。
+
+---
+
+**九、实际项目怎么选**
+
+Vue 项目常见：
+
+```
+组件样式：scoped
+全局变量：Sass/Less
+UI 库覆盖：:deep()
+全局 reset/theme：单独 global.css
+```
+
+React 项目常见：
+
+```
+CSS Modules
+Sass Modules
+CSS-in-JS
+Tailwind
+```
+
+中后台快速开发：
+
+```
+Tailwind + 组件库
+```
+
+传统大型页面：
+
+```
+BEM + Sass
+```
+
+组件库：
+
+```
+BEM / CSS Modules / CSS-in-JS / CSS Variables
+```
+
+---
+
+**十、面试版总结**
+
+可以这样说：
+
+> CSS 工程化主要是为了解决样式污染、命名冲突、复用困难和团队规范问题。Vue 里常用 `scoped`，它的原理是编译时给元素和选择器加类似 `data-v-xxx` 的属性选择器，实现组件级样式隔离。React 中常见 CSS Modules，它会把 class 名编译成带 hash 的唯一名字，通过 `styles.xxx` 使用，避免不同文件之间 class 冲突。
+> 
+> Sass/Less 是 CSS 预处理器，提供变量、嵌套、mixin、函数等能力，适合管理主题色、间距和复用样式，但要避免嵌套过深。Tailwind 是原子化 CSS 框架，通过工具类快速组合样式，能减少命名成本并保持设计约束，但模板 class 会变长，通常需要结合组件封装。
+> 
+> 如果没有模块化隔离，也可以用 BEM 这类命名规范降低冲突。实际项目中通常会组合使用，比如 Vue 项目用 scoped 做局部隔离，用 Sass 管理变量，用全局 CSS 放 reset 和主题变量，需要覆盖子组件时谨慎使用 `:deep()`。
