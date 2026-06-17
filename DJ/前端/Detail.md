@@ -10019,3 +10019,648 @@ border: 1px solid #eee;
 > `em` 相对于当前元素字体大小，适合做局部跟随文字缩放的尺寸；`rem` 相对于根元素字体大小，适合做全局适配；`vw/vh` 相对于视口宽高，适合直接按屏幕比例布局。响应式布局常用媒体查询，根据不同屏幕宽度切换布局，比如手机一列、平板两列、桌面多列。
 > 
 > 移动端适配常见方案有 viewport + flex/百分比、rem 等比例缩放、vw 适配、媒体查询等。1px 问题是因为高 DPR 屏幕下 1 CSS px 对应多个物理像素，边框看起来偏粗，常用伪元素加 `transform: scaleY(0.5)` 的方式模拟更细的边框。
+
+
+## 渲染与性能
+
+这部分面试要抓住一条线：
+
+> 浏览器把 DOM 和 CSS 变成屏幕上的像素，中间经历了样式计算、布局、绘制、合成。性能优化的核心，就是尽量少触发昂贵阶段。
+
+---
+
+**一、浏览器渲染流程**
+
+简化流程是：
+
+```
+HTML -> DOM
+CSS -> CSSOM
+DOM + CSSOM -> Render Tree
+Style 样式计算
+Layout 回流 / 布局
+Paint 重绘 / 绘制
+Composite 合成
+```
+
+你可以重点记后四步：
+
+```
+Style -> Layout -> Paint -> Composite
+```
+
+每个阶段做什么？
+
+**Style 样式计算**
+
+浏览器根据 CSS 选择器、继承、优先级，计算每个元素最终样式。
+
+比如：
+
+```
+.box {
+  color: red;
+  width: 100px;
+}
+```
+
+浏览器要知道 `.box` 最终的 `color`、`width`、`display` 等。
+
+---
+
+**Layout / Reflow 回流**
+
+计算每个元素的几何信息：
+
+```
+宽度
+高度
+位置
+行高
+换行
+盒模型
+```
+
+例如：
+
+```
+.box {
+  width: 50%;
+  padding: 20px;
+}
+```
+
+浏览器要根据父元素宽度算出 `.box` 真实宽度。
+
+---
+
+**Paint / Repaint 重绘**
+
+把元素的视觉样式画出来：
+
+```
+文字
+颜色
+背景
+边框
+阴影
+图片
+```
+
+比如：
+
+```
+background-color: red;
+box-shadow: 0 0 10px #000;
+```
+
+这些属于绘制内容。
+
+---
+
+**Composite 合成**
+
+现代浏览器会把页面分成多个图层，最后把这些图层合成为最终画面。
+
+比如某些元素可能单独成为合成层：
+
+```
+transform
+opacity
+will-change
+position: fixed
+video
+canvas
+```
+
+合成阶段负责把多个图层按顺序合到屏幕上。
+
+---
+
+**二、回流 Reflow / Layout**
+
+回流就是重新计算布局。
+
+只要某个操作影响了元素的几何信息，就可能触发回流。
+
+比如：
+
+```
+el.style.width = '200px'
+el.style.height = '100px'
+el.style.margin = '20px'
+el.style.padding = '10px'
+el.style.display = 'none'
+```
+
+这些都会改变元素占据空间。
+
+---
+
+**常见触发回流的操作**
+
+```
+width
+height
+margin
+padding
+border
+display
+position
+top
+left
+right
+bottom
+font-size
+line-height
+```
+
+DOM 结构变化也会触发：
+
+```
+parent.appendChild(child)
+parent.removeChild(child)
+el.innerHTML = '...'
+```
+
+读取布局信息也可能强制回流：
+
+```
+el.offsetWidth
+el.offsetHeight
+el.offsetTop
+el.clientWidth
+el.scrollHeight
+el.getBoundingClientRect()
+getComputedStyle(el)
+```
+
+尤其是这种模式很危险：
+
+```
+el.style.width = '300px'
+console.log(el.offsetHeight)
+```
+
+因为浏览器为了返回最新高度，被迫立刻计算布局。
+
+---
+
+**三、重绘 Repaint / Paint**
+
+重绘是元素布局没变，但视觉样式变了，需要重新画。
+
+比如：
+
+```
+el.style.color = 'red'
+el.style.backgroundColor = 'blue'
+el.style.visibility = 'hidden'
+el.style.borderColor = '#ddd'
+```
+
+这些通常不改变元素占据空间，只改变外观。
+
+注意一句面试高频：
+
+```
+回流一定会导致重绘，重绘不一定导致回流。
+```
+
+比如：
+
+```
+el.style.width = '200px'
+```
+
+会影响布局，所以：
+
+```
+回流 + 重绘
+```
+
+但：
+
+```
+el.style.backgroundColor = 'red'
+```
+
+通常只是：
+
+```
+重绘
+```
+
+---
+
+**四、合成 Composite**
+
+合成是浏览器把不同图层组合成最终画面。
+
+有些属性变化不需要重新布局，也不需要重新绘制，只需要合成。
+
+典型：
+
+```
+transform
+opacity
+```
+
+例如：
+
+```
+.box {
+  transform: translateX(100px);
+}
+```
+
+理想情况下流程是：
+
+```
+跳过 Layout
+跳过 Paint
+只做 Composite
+```
+
+所以动画推荐使用：
+
+```
+transform
+opacity
+```
+
+而不是：
+
+```
+left
+top
+width
+height
+margin
+```
+
+---
+
+**五、举个动画例子**
+
+不推荐：
+
+```
+.box {
+  position: absolute;
+  left: 0;
+  transition: left 0.3s;
+}
+
+.box:hover {
+  left: 100px;
+}
+```
+
+改变 `left` 会影响布局位置，可能触发回流。
+
+推荐：
+
+```
+.box {
+  transform: translateX(0);
+  transition: transform 0.3s;
+}
+
+.box:hover {
+  transform: translateX(100px);
+}
+```
+
+`transform` 通常只触发合成，性能更好。
+
+---
+
+**六、opacity 动画**
+
+推荐：
+
+```
+.fade {
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+
+.fade.hide {
+  opacity: 0;
+}
+```
+
+`opacity` 不影响布局，通常适合做淡入淡出。
+
+但注意：
+
+```
+opacity: 0;
+```
+
+元素只是透明了，仍然占据空间，也仍然可能响应事件。
+
+如果不希望点击到它，可以加：
+
+```
+pointer-events: none;
+```
+
+如果想完全不占空间，要用：
+
+```
+display: none;
+```
+
+但 `display` 无法直接做过渡动画，因为它会影响布局。
+
+---
+
+**七、CSS 动画优化原则**
+
+**1. 优先使用 transform / opacity**
+
+比如移动：
+
+```
+transform: translateX(100px);
+```
+
+比如缩放：
+
+```
+transform: scale(1.1);
+```
+
+比如淡入淡出：
+
+```
+opacity: 0.5;
+```
+
+避免频繁改变：
+
+```
+width
+height
+top
+left
+margin
+padding
+```
+
+---
+
+**2. 避免大面积重绘**
+
+比如频繁改变：
+
+```
+box-shadow
+filter
+background
+border-radius
+```
+
+可能导致绘制成本很高。
+
+尤其是：
+
+```
+filter: blur(10px);
+box-shadow: 0 0 50px rgba(0,0,0,.5);
+```
+
+如果大面积动画，会很卡。
+
+---
+
+**3. 使用 will-change 要谨慎**
+
+```
+.box {
+  will-change: transform;
+}
+```
+
+它是在告诉浏览器：
+
+> 这个元素接下来可能会发生 transform 变化，你可以提前优化。
+
+浏览器可能会提前把它提升到单独图层。
+
+但不要滥用：
+
+```
+* {
+  will-change: transform;
+}
+```
+
+这样会创建太多图层，占用内存，反而变慢。
+
+建议只给即将动画的元素使用，并在动画结束后移除。
+
+---
+
+**4. JS 动画使用 requestAnimationFrame**
+
+不推荐：
+
+```
+setInterval(() => {
+  box.style.transform = `translateX(${x++}px)`
+}, 16)
+```
+
+推荐：
+
+```
+function animate() {
+  x += 1
+  box.style.transform = `translateX(${x}px)`
+  requestAnimationFrame(animate)
+}
+
+requestAnimationFrame(animate)
+```
+
+`requestAnimationFrame` 会和浏览器刷新节奏对齐，通常是每秒 60 次左右。
+
+好处：
+
+```
+减少掉帧
+后台标签页会降频
+更适合视觉更新
+```
+
+---
+
+**5. 避免布局抖动**
+
+差写法：
+
+```
+items.forEach(item => {
+  item.style.width = '300px'
+  const height = item.offsetHeight
+  item.style.height = height + 20 + 'px'
+})
+```
+
+这是：
+
+```
+写样式 -> 读布局 -> 写样式 -> 读布局
+```
+
+可能多次强制同步布局。
+
+好写法：
+
+```
+const heights = Array.from(items, item => item.offsetHeight)
+
+items.forEach((item, index) => {
+  item.style.height = heights[index] + 20 + 'px'
+})
+```
+
+或者：
+
+```
+items.forEach(item => {
+  item.style.width = '300px'
+})
+
+requestAnimationFrame(() => {
+  const heights = Array.from(items, item => item.offsetHeight)
+
+  items.forEach((item, index) => {
+    item.style.height = heights[index] + 20 + 'px'
+  })
+})
+```
+
+核心是：
+
+```
+读写分离，批量操作
+```
+
+---
+
+**八、图层是什么**
+
+浏览器为了优化，会把页面拆成多个图层。
+
+某些元素可能被提升到独立图层：
+
+```
+transform: translateZ(0);
+will-change: transform;
+position: fixed;
+video;
+canvas;
+```
+
+独立图层的好处是：
+
+> 当这个元素移动或透明度变化时，浏览器可以只重新合成这个图层，而不用重绘整个页面。
+
+但图层也不是越多越好。
+
+太多图层会导致：
+
+```
+内存增加
+合成成本增加
+移动端掉帧
+```
+
+---
+
+**九、怎么排查性能问题**
+
+Chrome DevTools 里常用：
+
+**Performance 面板**
+
+可以看到：
+
+```
+Scripting
+Rendering
+Painting
+Compositing
+Long Task
+FPS
+```
+
+如果 Layout 很多，说明回流多。
+
+如果 Paint 很多，说明重绘多。
+
+如果 JS 时间很长，说明脚本阻塞主线程。
+
+---
+
+**Rendering 面板**
+
+可以开启：
+
+```
+Paint flashing
+Layer borders
+FPS meter
+```
+
+`Paint flashing` 会高亮重绘区域，方便看哪里频繁重绘。
+
+---
+
+**十、常见面试问法**
+
+**1. 回流和重绘区别？**
+
+答：
+
+> 回流是重新计算元素的位置和尺寸，重绘是重新绘制元素的外观。改变宽高、位置、display 等会触发回流；改变颜色、背景、visibility 等通常触发重绘。回流一定会伴随重绘，但重绘不一定触发回流。
+
+---
+
+**2. 为什么 transform 比 left 动画性能好？**
+
+答：
+
+> `left` 会改变元素在布局中的位置，可能触发布局计算和重绘；`transform` 只改变元素的视觉变换，不影响普通流布局，很多情况下可以由合成线程处理，只触发 composite，所以性能更好。
+
+---
+
+**3. will-change 是什么？**
+
+答：
+
+> `will-change` 用来提前告诉浏览器某个属性即将变化，比如 `will-change: transform`，浏览器可能提前为元素创建合成层来优化动画。但不能滥用，因为过多图层会增加内存和合成成本。
+
+---
+
+**4. 如何减少回流重绘？**
+
+答：
+
+> 可以批量修改 DOM，读写分离，避免循环中交替读取布局和写样式；动画优先使用 `transform` 和 `opacity`；复杂列表使用虚拟滚动；大量 DOM 插入可以用 `DocumentFragment`；避免频繁修改影响布局的属性，比如 width、height、top、left。
+
+---
+
+**面试版总结**
+
+可以这样说：
+
+> 浏览器渲染大致经历样式计算、布局、绘制和合成。布局也叫回流，负责计算元素的位置和尺寸；绘制也叫重绘，负责画出文字、颜色、背景、边框等视觉效果；合成则是把多个图层组合成最终画面。
+> 
+> 如果修改 `width`、`height`、`margin`、`display`、`top/left` 等影响几何信息的属性，会触发回流，回流后通常还会重绘。如果只是修改 `color`、`background-color`、`visibility` 这类不影响布局的属性，通常只触发重绘。`transform` 和 `opacity` 不影响布局，很多情况下可以跳过 layout 和 paint，只在合成阶段处理，所以动画性能更好。
+> 
+> 优化时要减少强制同步布局，避免在循环里反复“写样式、读布局”，做到读写分离；动画优先使用 `transform` 和 `opacity`；谨慎使用 `will-change`；必要时用 `requestAnimationFrame` 做 JS 动画，并通过 DevTools Performance 面板观察 Layout、Paint 和 FPS。
