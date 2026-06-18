@@ -10502,6 +10502,459 @@ Object.hasOwn(obj, 'name')
 > 
 > JS 继承常见方式有原型链继承、构造函数继承、组合继承、寄生组合继承和 ES6 class 继承。原型链继承的问题是引用类型属性会被共享；构造函数继承的问题是不能继承原型方法；组合继承能同时继承实例属性和原型方法，但会调用两次父构造函数；寄生组合继承通过 `Parent.call(this)` 和 `Object.create(Parent.prototype)` 解决这些问题。ES6 的 `class extends` 本质上也是原型链继承的语法糖。
 
+
+# 闭包
+这个题可以按三句话理解：
+
+```
+函数可以访问自己定义时所在作用域的变量
+即使这个函数在外部执行，仍然能访问那些变量
+这些变量不会被立即销毁
+```
+
+---
+
+**1. 什么是闭包**
+
+先看一个例子：
+
+```
+function outer() {
+  const name = 'Tom'
+
+  function inner() {
+    console.log(name)
+  }
+
+  return inner
+}
+
+const fn = outer()
+
+fn() // Tom
+```
+
+`outer` 执行完后，按理说它的局部变量 `name` 应该销毁。
+
+但 `inner` 仍然能访问 `name`。
+
+因为 `inner` 在定义时记住了它所在的词法作用域。
+
+这就是闭包。
+
+一句话：
+
+> 闭包就是函数和它能够访问的外部词法环境的组合。
+
+更口语一点：
+
+> 内部函数引用了外部函数的变量，并且这个内部函数被外部持有，就形成了闭包。
+
+---
+
+**2. 为什么 outer 执行完，name 还在**
+
+因为：
+
+```
+const fn = outer()
+```
+
+`fn` 引用了 `inner` 函数。
+
+而 `inner` 函数内部还引用了 `outer` 作用域里的 `name`。
+
+所以 JS 引擎不能把 `name` 回收。
+
+引用关系大概是：
+
+```
+fn -> inner 函数
+inner 函数 -> outer 的词法环境
+outer 的词法环境 -> name
+```
+
+只要 `fn` 还存在，`name` 就还可以被访问。
+
+---
+
+**3. 闭包和作用域的关系**
+
+JS 是词法作用域，也叫静态作用域。
+
+函数能访问哪些变量，取决于它**定义的位置**，不是调用的位置。
+
+看这个：
+
+```
+const name = 'global'
+
+function outer() {
+  const name = 'outer'
+
+  return function inner() {
+    console.log(name)
+  }
+}
+
+const fn = outer()
+
+function run() {
+  const name = 'run'
+  fn()
+}
+
+run()
+```
+
+输出：
+
+```
+outer
+```
+
+因为 `inner` 是在 `outer` 里面定义的，所以它记住的是 `outer` 里的 `name`，不是调用它的 `run` 里的 `name`。
+
+---
+
+**4. 闭包有什么用**
+
+**1. 保存私有变量**
+
+```
+function createCounter() {
+  let count = 0
+
+  return {
+    increment() {
+      count++
+      return count
+    },
+    decrement() {
+      count--
+      return count
+    },
+    getCount() {
+      return count
+    }
+  }
+}
+
+const counter = createCounter()
+
+console.log(counter.increment()) // 1
+console.log(counter.increment()) // 2
+console.log(counter.getCount())  // 2
+```
+
+外部不能直接访问：
+
+```
+counter.count // undefined
+```
+
+但可以通过暴露的方法间接操作 `count`。
+
+这就是用闭包实现私有状态。
+
+---
+
+**2. 函数柯里化**
+
+```
+function add(a) {
+  return function (b) {
+    return a + b
+  }
+}
+
+const add10 = add(10)
+
+console.log(add10(5)) // 15
+```
+
+`add10` 记住了 `a = 10`。
+
+所以后面传 `5` 时可以得到 `15`。
+
+---
+
+**3. 防抖 debounce**
+
+```
+function debounce(fn, delay) {
+  let timer = null
+
+  return function (...args) {
+    clearTimeout(timer)
+
+    timer = setTimeout(() => {
+      fn.apply(this, args)
+    }, delay)
+  }
+}
+
+const handleInput = debounce(function () {
+  console.log('search')
+}, 300)
+```
+
+这里 `timer` 是闭包变量。
+
+每次调用 `handleInput`，都能访问同一个 `timer`。
+
+这就是闭包在实际项目里的典型使用。
+
+---
+
+**4. 节流 throttle**
+
+```
+function throttle(fn, delay) {
+  let lastTime = 0
+
+  return function (...args) {
+    const now = Date.now()
+
+    if (now - lastTime >= delay) {
+      lastTime = now
+      fn.apply(this, args)
+    }
+  }
+}
+```
+
+`lastTime` 被返回的函数一直记住，用来判断是否到了执行时间。
+
+---
+
+**5. 模块化封装**
+
+早期没有 ES Module 时，会用立即执行函数 IIFE 创建私有作用域：
+
+```
+const module = (function () {
+  const privateName = 'Tom'
+
+  function getName() {
+    return privateName
+  }
+
+  return {
+    getName
+  }
+})()
+
+console.log(module.getName()) // Tom
+console.log(module.privateName) // undefined
+```
+
+`privateName` 对外不可见，但 `getName` 可以访问。
+
+---
+
+**5. 闭包可能产生的问题**
+
+**1. 内存占用增加**
+
+闭包会让外部函数的变量不被释放。
+
+比如：
+
+```
+function createFn() {
+  const bigData = new Array(1000000).fill('*')
+
+  return function () {
+    console.log(bigData.length)
+  }
+}
+
+const fn = createFn()
+```
+
+只要 `fn` 还存在，`bigData` 就不能回收。
+
+如果 `bigData` 很大，就会占用内存。
+
+---
+
+**2. 内存泄漏**
+
+如果闭包被长期保存，比如挂到全局、定时器、事件监听中，就可能导致相关变量一直无法释放。
+
+```
+function bindEvent() {
+  const data = new Array(1000000).fill('*')
+
+  window.addEventListener('resize', function () {
+    console.log(data.length)
+  })
+}
+
+bindEvent()
+```
+
+这里 resize 回调引用了 `data`。
+
+而这个回调被 `window` 持有。
+
+所以 `data` 可能一直不能释放。
+
+解决：
+
+```
+function bindEvent() {
+  const data = new Array(1000000).fill('*')
+
+  function handler() {
+    console.log(data.length)
+  }
+
+  window.addEventListener('resize', handler)
+
+  return function cleanup() {
+    window.removeEventListener('resize', handler)
+  }
+}
+
+const cleanup = bindEvent()
+
+cleanup()
+```
+
+Vue / React 组件里也一样，卸载时要清理事件监听、定时器、订阅等。
+
+---
+
+**3. 循环中变量捕获问题**
+
+经典题：
+
+```
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => {
+    console.log(i)
+  }, 0)
+}
+```
+
+输出：
+
+```
+3
+3
+3
+```
+
+原因：
+
+```
+var 是函数作用域
+三个回调共享同一个 i
+setTimeout 执行时，循环已经结束，i 变成 3
+```
+
+解决方式 1：用 `let`
+
+```
+for (let i = 0; i < 3; i++) {
+  setTimeout(() => {
+    console.log(i)
+  }, 0)
+}
+```
+
+输出：
+
+```
+0
+1
+2
+```
+
+因为 `let` 有块级作用域，每轮循环会创建新的绑定。
+
+解决方式 2：IIFE
+
+```
+for (var i = 0; i < 3; i++) {
+  ;(function (j) {
+    setTimeout(() => {
+      console.log(j)
+    }, 0)
+  })(i)
+}
+```
+
+---
+
+**6. 闭包不是“只有 return 函数”才有**
+
+很多人误以为只有返回函数才叫闭包。
+
+其实只要函数访问了外部作用域变量，就有闭包特征。
+
+比如事件回调：
+
+```
+function init() {
+  const name = 'Tom'
+
+  button.addEventListener('click', function () {
+    console.log(name)
+  })
+}
+```
+
+这个 click 回调也形成了闭包。
+
+因为它访问了 `init` 里的 `name`，而回调可能在 `init` 执行完后才执行。
+
+---
+
+**7. 闭包和 this 没有必然关系**
+
+闭包是作用域概念。
+
+`this` 是函数调用方式决定的。
+
+比如：
+
+```
+const obj = {
+  name: 'obj',
+  fn() {
+    const age = 18
+
+    return function () {
+      console.log(age)
+      console.log(this.name)
+    }
+  }
+}
+```
+
+这里返回的函数闭包访问 `age`，但 `this.name` 取决于它怎么被调用。
+
+所以面试里可以强调：
+
+> 闭包由词法作用域决定，this 由调用方式决定，两者不是一回事。
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> 闭包是函数和其词法作用域的组合。一个函数在定义时会记住它所在的作用域，即使这个函数在外部被调用，也能访问定义时外层作用域中的变量。常见形式是外部函数返回内部函数，内部函数引用了外部函数的变量，这些变量就不会在外部函数执行结束后立即销毁。
+> 
+> 闭包常用于保存私有变量、封装模块、函数柯里化、防抖节流等。比如防抖函数中，返回的函数通过闭包一直保存同一个 timer，从而实现多次触发只执行最后一次。
+> 
+> 闭包的问题是可能导致内存占用增加。如果闭包长期持有大对象，或者被全局变量、定时器、事件监听引用，就可能造成内存泄漏。实际开发中要注意在组件销毁时清除定时器、移除事件监听、取消订阅，不再需要的引用及时释放。另外，循环里用 `var` 配合异步回调会因为共享同一个变量产生经典问题，可以用 `let` 或 IIFE 解决。
+
+
+
 # JavaScript 的垃圾回收
 这题可以按三层讲：
 
