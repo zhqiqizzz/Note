@@ -10149,15 +10149,7 @@ console.log(c2.colors) // ['red', 'blue', 'green']
 **11. 构造函数继承**
 
 ```
-function Parent(name) {
-  this.name = name
-  this.colors = ['red', 'blue']
-}
-
-function Child(name) {
-  Parent.call(this, name)
-}
-
+ 
 const c1 = new Child('Tom')
 const c2 = new Child('Jerry')
 
