@@ -9738,6 +9738,778 @@ await xxx
 > 
 > Promise 和 XMLHttpRequest 不是同一层概念。XHR 是浏览器提供的网络请求 API，基于事件和回调发送 HTTP 请求；Promise 是异步编程模型，本身不发送请求，只负责管理异步结果。XHR 可以被封装成 Promise，从而获得链式调用、统一错误处理和并发组合能力。
 
+# 原型、继承
+
+> JavaScript 里的对象不是靠“类”天生继承的，而是靠**原型对象**和**原型链**实现属性查找与复用。
+
+---
+
+**1. 原型是什么**
+
+每个函数在创建时，都会有一个 `prototype` 属性。
+
+```
+function Person(name) {
+  this.name = name
+}
+
+console.log(Person.prototype)
+```
+
+`Person.prototype` 是一个对象，通常叫：
+
+```
+构造函数的原型对象
+```
+
+如果你把方法挂到它上面：
+
+```
+Person.prototype.sayHi = function () {
+  console.log('hi, I am ' + this.name)
+}
+```
+
+那么通过 `new Person()` 创建出来的实例，都可以访问这个方法：
+
+```
+const p1 = new Person('Tom')
+const p2 = new Person('Jerry')
+
+p1.sayHi()
+p2.sayHi()
+```
+
+这样做的好处是：
+
+> 方法只在原型上存一份，所有实例共享，节省内存。
+
+---
+
+**2. `__proto__` 是什么**
+
+每个对象内部都有一个指向其原型对象的链接。
+
+平时可以通过：
+
+```
+obj.__proto__
+```
+
+看到。
+
+比如：
+
+```
+function Person(name) {
+  this.name = name
+}
+
+const p = new Person('Tom')
+
+console.log(p.__proto__ === Person.prototype) // true
+```
+
+也就是说：
+
+```
+实例对象的 __proto__ 指向构造函数的 prototype
+```
+
+更标准的写法是：
+
+```
+Object.getPrototypeOf(p) === Person.prototype
+```
+
+面试里要注意：
+
+> `__proto__` 是浏览器实现的访问器属性，标准推荐用 `Object.getPrototypeOf()` 获取原型。
+
+---
+
+**3. constructor 是什么**
+
+默认情况下，原型对象上有一个 `constructor` 属性，指回构造函数本身：
+
+```
+function Person() {}
+
+console.log(Person.prototype.constructor === Person) // true
+```
+
+关系是：
+
+```
+Person.prototype.constructor -> Person
+```
+
+实例可以沿着原型链访问到它：
+
+```
+const p = new Person()
+
+console.log(p.constructor === Person) // true
+```
+
+注意：
+
+```
+p
+  -> p.__proto__
+  -> Person.prototype.constructor
+```
+
+`constructor` 不是实例自己的属性，是从原型上找到的。
+
+---
+
+**4. prototype、**proto**、constructor 三者关系**
+
+这张关系必须会：
+
+```
+function Person(name) {
+  this.name = name
+}
+
+const p = new Person('Tom')
+```
+
+对应关系：
+
+```
+Person.prototype 是构造函数的原型对象
+
+p.__proto__ === Person.prototype
+
+Person.prototype.constructor === Person
+
+p.constructor === Person
+```
+
+可以画成：
+
+```
+Person 函数
+   |
+   | prototype
+   ↓
+Person.prototype
+   |
+   | constructor
+   ↓
+Person 函数
+
+p 实例
+   |
+   | __proto__
+   ↓
+Person.prototype
+```
+
+---
+
+**5. 原型链是什么**
+
+当你访问一个对象属性时：
+
+```
+p.sayHi
+```
+
+JS 查找顺序是：
+
+1. 先看 `p` 自己有没有 `sayHi`
+2. 如果没有，就去 `p.__proto__` 上找
+3. 还没有，就继续去 `p.__proto__.__proto__` 上找
+4. 一直找到 `null`
+
+这条查找链路就叫：
+
+```
+原型链
+```
+
+例子：
+
+```
+function Person(name) {
+  this.name = name
+}
+
+Person.prototype.sayHi = function () {
+  console.log('hi')
+}
+
+const p = new Person('Tom')
+
+p.sayHi()
+```
+
+`p` 自己没有 `sayHi`，于是去：
+
+```
+p.__proto__ -> Person.prototype
+```
+
+找到了。
+
+---
+
+**6. 原型链的终点**
+
+普通对象的原型链：
+
+```
+const obj = {}
+```
+
+关系：
+
+```
+obj.__proto__ === Object.prototype
+Object.prototype.__proto__ === null
+```
+
+也就是：
+
+```
+obj -> Object.prototype -> null
+```
+
+数组：
+
+```
+const arr = []
+```
+
+关系：
+
+```
+arr -> Array.prototype -> Object.prototype -> null
+```
+
+函数：
+
+```
+function fn() {}
+```
+
+关系：
+
+```
+fn -> Function.prototype -> Object.prototype -> null
+```
+
+---
+
+**7. new 做了什么**
+
+这是高频。
+
+```
+const p = new Person('Tom')
+```
+
+`new` 大概做了四件事：
+
+```
+function myNew(Constructor, ...args) {
+  const obj = {}
+
+  Object.setPrototypeOf(obj, Constructor.prototype)
+
+  const result = Constructor.apply(obj, args)
+
+  return result !== null && typeof result === 'object'
+    ? result
+    : obj
+}
+```
+
+更完整一点还要处理函数返回：
+
+```
+function myNew(Constructor, ...args) {
+  const obj = Object.create(Constructor.prototype)
+
+  const result = Constructor.apply(obj, args)
+
+  const isObject = result !== null && typeof result === 'object'
+  const isFunction = typeof result === 'function'
+
+  return isObject || isFunction ? result : obj
+}
+```
+
+`new` 的流程：
+
+1. 创建一个新对象
+2. 把新对象的原型指向构造函数的 `prototype`
+3. 让构造函数里的 `this` 指向新对象
+4. 如果构造函数返回对象，则返回这个对象；否则返回新对象
+
+---
+
+**8. instanceof 原理**
+
+```
+p instanceof Person
+```
+
+判断的是：
+
+> `Person.prototype` 是否出现在 `p` 的原型链上。
+
+比如：
+
+```
+function Person() {}
+
+const p = new Person()
+
+console.log(p instanceof Person) // true
+console.log(p instanceof Object) // true
+```
+
+因为：
+
+```
+p -> Person.prototype -> Object.prototype -> null
+```
+
+实现：
+
+```
+function myInstanceof(obj, Constructor) {
+  let proto = Object.getPrototypeOf(obj)
+  const prototype = Constructor.prototype
+
+  while (proto) {
+    if (proto === prototype) {
+      return true
+    }
+
+    proto = Object.getPrototypeOf(proto)
+  }
+
+  return false
+}
+```
+
+---
+
+**9. 继承是什么**
+
+继承的核心是：
+
+> 子对象能复用父对象的属性和方法。
+
+JS 里继承主要依赖原型链。
+
+下面按历史方式讲。
+
+---
+
+**10. 原型链继承**
+
+```
+function Parent() {
+  this.colors = ['red', 'blue']
+}
+
+Parent.prototype.say = function () {
+  console.log('parent')
+}
+
+function Child() {}
+
+Child.prototype = new Parent()
+
+const c1 = new Child()
+const c2 = new Child()
+
+c1.colors.push('green')
+
+console.log(c2.colors) // ['red', 'blue', 'green']
+```
+
+问题：
+
+```
+引用类型属性被所有实例共享
+创建子类实例时不能方便给父构造函数传参
+```
+
+因为 `colors` 在 `Child.prototype` 上，被所有实例共享。
+
+---
+
+**11. 构造函数继承**
+
+```
+function Parent(name) {
+  this.name = name
+  this.colors = ['red', 'blue']
+}
+
+function Child(name) {
+  Parent.call(this, name)
+}
+
+const c1 = new Child('Tom')
+const c2 = new Child('Jerry')
+
+c1.colors.push('green')
+
+console.log(c1.colors) // ['red', 'blue', 'green']
+console.log(c2.colors) // ['red', 'blue']
+```
+
+优点：
+
+```
+解决引用类型共享问题
+可以给父构造函数传参
+```
+
+缺点：
+
+```
+只能继承父构造函数里的实例属性
+不能继承父原型上的方法
+```
+
+比如：
+
+```
+Parent.prototype.say = function () {}
+```
+
+`Child` 实例访问不到。
+
+---
+
+**12. 组合继承**
+
+组合继承 = 原型链继承 + 构造函数继承。
+
+```
+function Parent(name) {
+  this.name = name
+  this.colors = ['red', 'blue']
+}
+
+Parent.prototype.say = function () {
+  console.log(this.name)
+}
+
+function Child(name, age) {
+  Parent.call(this, name)
+  this.age = age
+}
+
+Child.prototype = new Parent()
+Child.prototype.constructor = Child
+
+const c1 = new Child('Tom', 18)
+const c2 = new Child('Jerry', 20)
+```
+
+优点：
+
+```
+实例属性独立
+原型方法共享
+```
+
+缺点：
+
+```
+Parent 构造函数会被调用两次
+```
+
+一次是：
+
+```
+Child.prototype = new Parent()
+```
+
+一次是：
+
+```
+Parent.call(this, name)
+```
+
+---
+
+**13. 寄生组合继承**
+
+这是 ES5 里比较理想的继承方式。
+
+```
+function Parent(name) {
+  this.name = name
+  this.colors = ['red', 'blue']
+}
+
+Parent.prototype.say = function () {
+  console.log(this.name)
+}
+
+function Child(name, age) {
+  Parent.call(this, name)
+  this.age = age
+}
+
+Child.prototype = Object.create(Parent.prototype)
+Child.prototype.constructor = Child
+
+const c = new Child('Tom', 18)
+
+c.say()
+```
+
+关键是：
+
+```
+Child.prototype = Object.create(Parent.prototype)
+```
+
+这一步创建了一个新对象，它的原型指向 `Parent.prototype`。
+
+避免了：
+
+```
+Child.prototype = new Parent()
+```
+
+所以不会多调用一次父构造函数。
+
+这是最推荐理解的继承方式。
+
+---
+
+**14. class 继承**
+
+ES6 的 `class` 本质上是原型继承的语法糖。
+
+```
+class Parent {
+  constructor(name) {
+    this.name = name
+  }
+
+  say() {
+    console.log(this.name)
+  }
+}
+
+class Child extends Parent {
+  constructor(name, age) {
+    super(name)
+    this.age = age
+  }
+}
+
+const c = new Child('Tom', 18)
+c.say()
+```
+
+背后大致相当于：
+
+```
+Child.prototype 的原型指向 Parent.prototype
+Child 构造函数内部通过 super 调用 Parent 构造函数
+```
+
+关系：
+
+```
+Object.getPrototypeOf(Child.prototype) === Parent.prototype
+```
+
+另外：
+
+```
+Object.getPrototypeOf(Child) === Parent
+```
+
+这表示静态方法也能继承。
+
+---
+
+**15. class 里的 super**
+
+在子类构造函数里：
+
+```
+class Child extends Parent {
+  constructor(name) {
+    super(name)
+    this.age = 18
+  }
+}
+```
+
+必须先调用：
+
+```
+super()
+```
+
+才能使用：
+
+```
+this
+```
+
+因为子类实例的 `this` 是由父类构造函数初始化的。
+
+如果不写：
+
+```
+super()
+```
+
+会报错。
+
+---
+
+**16. Object.create 是什么**
+
+```
+const proto = {
+  say() {
+    console.log('hi')
+  }
+}
+
+const obj = Object.create(proto)
+
+obj.say()
+```
+
+`Object.create(proto)` 会创建一个新对象，并把这个新对象的原型指向 `proto`。
+
+也就是：
+
+```
+Object.getPrototypeOf(obj) === proto
+```
+
+它常用于创建纯原型继承关系。
+
+---
+
+**17. 原型上方法和实例上方法区别**
+
+```
+function Person(name) {
+  this.name = name
+
+  this.say = function () {
+    console.log(this.name)
+  }
+}
+```
+
+这种写法每创建一个实例，都会创建一份 `say` 方法。
+
+```
+const p1 = new Person('Tom')
+const p2 = new Person('Jerry')
+
+console.log(p1.say === p2.say) // false
+```
+
+如果写到原型上：
+
+```
+function Person(name) {
+  this.name = name
+}
+
+Person.prototype.say = function () {
+  console.log(this.name)
+}
+
+const p1 = new Person('Tom')
+const p2 = new Person('Jerry')
+
+console.log(p1.say === p2.say) // true
+```
+
+所有实例共享同一个方法，更节省内存。
+
+---
+
+**18. hasOwnProperty 和 in**
+
+```
+const obj = {
+  name: 'Tom'
+}
+
+console.log('name' in obj) // true
+console.log(obj.hasOwnProperty('name')) // true
+
+console.log('toString' in obj) // true
+console.log(obj.hasOwnProperty('toString')) // false
+```
+
+区别：
+
+```
+in：自己和原型链上有都返回 true
+hasOwnProperty：只有对象自身属性才返回 true
+```
+
+更推荐安全写法：
+
+```
+Object.prototype.hasOwnProperty.call(obj, 'name')
+```
+
+或者新方法：
+
+```
+Object.hasOwn(obj, 'name')
+```
+
+---
+
+**19. 面试常见问题总结**
+
+**原型链是什么？**
+
+> 当访问对象属性时，JS 会先在对象自身查找，如果找不到，就沿着对象的原型继续查找，直到 `null`，这条查找链路就是原型链。
+
+**prototype 和 `__proto__` 区别？**
+
+> `prototype` 是函数才有的属性，指向构造函数的原型对象；`__proto__` 是对象内部指向其原型的链接。实例的 `__proto__` 指向构造函数的 `prototype`。
+
+**new 做了什么？**
+
+> 创建新对象，把新对象原型指向构造函数的 prototype，执行构造函数并绑定 this，如果构造函数返回对象则返回该对象，否则返回新对象。
+
+**继承怎么实现？**
+
+> ES5 推荐寄生组合继承：子构造函数内部用 `Parent.call(this)` 继承实例属性，再用 `Object.create(Parent.prototype)` 让子类原型继承父类原型。ES6 可以用 `class extends`，本质仍然是基于原型链的语法糖。
+
+---
+
+**面试版总回答**
+
+可以这样说：
+
+> JavaScript 的继承主要基于原型链。每个函数都有 `prototype` 属性，指向它的原型对象；通过 `new` 创建的实例对象内部有一个原型链接，通常通过 `__proto__` 访问，它指向构造函数的 `prototype`。当访问实例属性时，会先从实例自身查找，找不到就沿着 `__proto__` 指向的原型对象继续查找，直到 `null`，这条链就是原型链。
+> 
+> 原型的作用是实现属性和方法共享，比如把方法挂在 `Person.prototype` 上，所有 `Person` 实例都可以访问同一个方法，避免每个实例都创建一份函数。`new` 的过程可以理解为创建一个新对象，把它的原型指向构造函数的 `prototype`，然后执行构造函数并绑定 this，最后返回这个对象。
+> 
+> JS 继承常见方式有原型链继承、构造函数继承、组合继承、寄生组合继承和 ES6 class 继承。原型链继承的问题是引用类型属性会被共享；构造函数继承的问题是不能继承原型方法；组合继承能同时继承实例属性和原型方法，但会调用两次父构造函数；寄生组合继承通过 `Parent.call(this)` 和 `Object.create(Parent.prototype)` 解决这些问题。ES6 的 `class extends` 本质上也是原型链继承的语法糖。
+
 # JavaScript 的垃圾回收
 这题可以按三层讲：
 
