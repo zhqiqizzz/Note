@@ -7221,11 +7221,11 @@ if (el.scrollTop + el.clientHeight >= el.scrollHeight) {
 
 **元素尺寸总结**
 
-|属性|包含 content|padding|border|margin|滚动条|溢出内容|
-|---|---|---|---|---|---|---|
-|`clientWidth`|是|是|否|否|否|否|
-|`offsetWidth`|是|是|是|否|是|否|
-|`scrollWidth`|是|是|否|否|通常不算|是|
+| 属性            | 包含 content | padding | border | margin | 滚动条  | 溢出内容 |
+| ------------- | ---------- | ------- | ------ | ------ | ---- | ---- |
+| `clientWidth` | 是          | 是       | 否      | 否      | 否    | 否    |
+| `offsetWidth` | 是          | 是       | 是      | 否      | 是    | 否    |
+| `scrollWidth` | 是          | 是       | 否      | 否      | 通常不算 | 是    |
 
 ---
 
