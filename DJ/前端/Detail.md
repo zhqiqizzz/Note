@@ -8671,6 +8671,7 @@ SSE
 > fetch 是现代浏览器原生提供的请求 API，基于 Promise，写法更简洁，可以配合 async/await。但 fetch 对 404、500 不会自动 reject，需要自己判断 `response.ok`；跨域带 cookie 要设置 `credentials: 'include'`；取消请求要配合 AbortController。
 > 
 > axios 是第三方请求库，浏览器端通常基于 XHR，封装了 Promise、自动 JSON 转换、拦截器、超时、取消请求、上传进度等能力，所以企业项目里经常基于 axios 做统一请求封装。JSONP 是利用 script 标签不受同源限制实现跨域，只支持 GET，现在大多被 CORS 替代。
+> 
 # Map,Weakmap
 可以，这个题要从三个维度讲：**键的类型、引用强弱、能不能遍历**。
 
