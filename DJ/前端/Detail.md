@@ -15720,3 +15720,614 @@ BEM / CSS Modules / CSS-in-JS / CSS Variables
 > Sass/Less 是 CSS 预处理器，提供变量、嵌套、mixin、函数等能力，适合管理主题色、间距和复用样式，但要避免嵌套过深。Tailwind 是原子化 CSS 框架，通过工具类快速组合样式，能减少命名成本并保持设计约束，但模板 class 会变长，通常需要结合组件封装。
 > 
 > 如果没有模块化隔离，也可以用 BEM 这类命名规范降低冲突。实际项目中通常会组合使用，比如 Vue 项目用 scoped 做局部隔离，用 Sass 管理变量，用全局 CSS 放 reset 和主题变量，需要覆盖子组件时谨慎使用 `:deep()`。
+
+
+# TypeScript
+
+**1. TypeScript 是什么**
+
+TypeScript 是 JavaScript 的超集。
+
+也就是说：
+
+```
+const name = 'Tom'
+```
+
+这既是 JS，也是 TS。
+
+TS 在 JS 基础上增加了：
+
+```
+静态类型检查
+接口 interface
+类型别名 type
+泛型 generic
+枚举 enum
+访问修饰符
+装饰器 decorator
+类型推导
+高级类型
+```
+
+最终 TS 不能直接在浏览器或 Node 中运行，需要编译成 JS。
+
+面试可以说：
+
+> TypeScript 本质上是在开发阶段给 JavaScript 增加静态类型系统，帮助我们提前发现类型错误，提升代码可维护性和编辑器提示能力，最终还是会被编译成 JavaScript 运行。
+
+---
+
+**2. TS 解决了什么问题**
+
+JS 是动态类型：
+
+```
+function add(a, b) {
+  return a + b
+}
+
+add(1, 2)
+add('1', 2)
+add(null, {})
+```
+
+这些在 JS 里都可能运行，但结果不一定符合预期。
+
+TS 可以提前限制：
+
+```
+function add(a: number, b: number): number {
+  return a + b
+}
+
+add(1, 2)
+add('1', 2) // 报错
+```
+
+TS 主要解决：
+
+```
+减少运行时类型错误
+提升大型项目可维护性
+增强 IDE 提示和重构能力
+让接口数据结构更清晰
+方便团队协作
+```
+
+---
+
+**3. 基础类型**
+
+你需要熟悉这些：
+
+```
+let name: string = 'Tom'
+let age: number = 18
+let isAdmin: boolean = false
+let list: number[] = [1, 2, 3]
+let names: Array<string> = ['a', 'b']
+let value: null = null
+let u: undefined = undefined
+```
+
+对象：
+
+```
+const user: { name: string; age: number } = {
+  name: 'Tom',
+  age: 18
+}
+```
+
+函数：
+
+```
+function getUser(id: number): string {
+  return `user-${id}`
+}
+```
+
+可选参数：
+
+```
+function createUser(name: string, age?: number) {}
+```
+
+默认值：
+
+```
+function createUser(name: string, age = 18) {}
+```
+
+---
+
+**4. any、unknown、never、void**
+
+这几个面试很常见。
+
+`any`：放弃类型检查。
+
+```
+let value: any = 1
+value = 'hello'
+value.foo.bar()
+```
+
+能不用就不用。
+
+`unknown`：不知道类型，但更安全。
+
+```
+let value: unknown = 'hello'
+
+if (typeof value === 'string') {
+  console.log(value.toUpperCase())
+}
+```
+
+区别：
+
+```
+any 是我不管了
+unknown 是我现在不知道，用之前要先判断
+```
+
+`void`：函数没有返回值。
+
+```
+function log(): void {
+  console.log('hello')
+}
+```
+
+`never`：永远不会有返回值。
+
+```
+function throwError(): never {
+  throw new Error('error')
+}
+```
+
+或者死循环：
+
+```
+function loop(): never {
+  while (true) {}
+}
+```
+
+---
+
+**5. interface 和 type**
+
+`interface` 常用于描述对象结构：
+
+```
+interface User {
+  id: number
+  name: string
+  age?: number
+}
+
+const user: User = {
+  id: 1,
+  name: 'Tom'
+}
+```
+
+`type` 也可以描述对象：
+
+```
+type User = {
+  id: number
+  name: string
+}
+```
+
+它们区别可以这样记：
+
+`interface`：
+
+```
+更适合描述对象、类的结构
+可以重复声明并自动合并
+可以被 class implements
+```
+
+```
+interface User {
+  name: string
+}
+
+interface User {
+  age: number
+}
+
+const user: User = {
+  name: 'Tom',
+  age: 18
+}
+```
+
+`type`：
+
+```
+更灵活，可以定义联合类型、交叉类型、基础类型别名
+```
+
+```
+type ID = string | number
+
+type Status = 'pending' | 'success' | 'fail'
+
+type UserWithRole = User & {
+  role: string
+}
+```
+
+面试版：
+
+> interface 更偏向描述对象结构，适合类实现和扩展；type 更灵活，可以表达联合类型、交叉类型、字面量类型等。日常项目里对象模型可以优先 interface，复杂类型组合常用 type。
+
+---
+
+**6. 联合类型和字面量类型**
+
+联合类型：
+
+```
+let id: string | number
+
+id = 'abc'
+id = 123
+```
+
+字面量类型：
+
+```
+type Role = 'admin' | 'user' | 'guest'
+
+function setRole(role: Role) {}
+
+setRole('admin')
+setRole('xxx') // 报错
+```
+
+这个很适合限制状态值：
+
+```
+type OrderStatus = 'created' | 'paid' | 'closed'
+```
+
+比单纯 `string` 更安全。
+
+---
+
+**7. 泛型**
+
+泛型是 TS 核心之一，可以理解为：
+
+> 类型参数化，让函数、接口、类在保持类型安全的同时复用。
+
+不用泛型：
+
+```
+function identity(value: any): any {
+  return value
+}
+```
+
+问题是丢失类型。
+
+用泛型：
+
+```
+function identity<T>(value: T): T {
+  return value
+}
+
+const a = identity<string>('hello')
+const b = identity<number>(123)
+```
+
+也可以让 TS 自动推导：
+
+```
+const a = identity('hello') // string
+const b = identity(123) // number
+```
+
+常见接口：
+
+```
+interface ApiResponse<T> {
+  code: number
+  message: string
+  data: T
+}
+
+interface User {
+  id: number
+  name: string
+}
+
+const res: ApiResponse<User> = {
+  code: 0,
+  message: 'ok',
+  data: {
+    id: 1,
+    name: 'Tom'
+  }
+}
+```
+
+这个和后端接口返回结构非常相关，建议你重点掌握。
+
+---
+
+**8. class 相关**
+
+NestJS 大量使用 class。
+
+```
+class UserService {
+  private users: string[] = []
+
+  public addUser(name: string): void {
+    this.users.push(name)
+  }
+
+  protected getUsers(): string[] {
+    return this.users
+  }
+}
+```
+
+访问修饰符：
+
+```
+public：默认，外部可访问
+private：只能类内部访问
+protected：类内部和子类可访问
+readonly：只读，初始化后不能改
+```
+
+```
+class User {
+  readonly id: number
+
+  constructor(id: number, public name: string) {
+    this.id = id
+  }
+}
+```
+
+构造函数参数属性简写：
+
+```
+class User {
+  constructor(
+    public id: number,
+    private name: string
+  ) {}
+}
+```
+
+等价于自动声明并赋值。
+
+---
+
+**9. 装饰器 Decorator**
+
+这个和 NestJS 强相关。
+
+NestJS 里你会看到：
+
+```
+@Controller('user')
+export class UserController {
+  constructor(private readonly userService: UserService) {}
+
+  @Get(':id')
+  getUser(@Param('id') id: string) {
+    return this.userService.findOne(id)
+  }
+}
+```
+
+这些：
+
+```
+@Controller()
+@Get()
+@Param()
+@Injectable()
+```
+
+都是装饰器。
+
+装饰器本质上是一种特殊函数，用来给类、方法、属性、参数添加元数据或增强行为。
+
+比如：
+
+```
+@Injectable()
+export class UserService {}
+```
+
+告诉 Nest：
+
+> 这个类可以交给依赖注入容器管理。
+
+```
+@Controller('user')
+```
+
+告诉 Nest：
+
+> 这个类是控制器，路由前缀是 `/user`。
+
+```
+@Get(':id')
+```
+
+告诉 Nest：
+
+> 这个方法处理 GET /user/:id 请求。
+
+面试里可以说：
+
+> NestJS 大量使用 TypeScript 装饰器来声明路由、依赖注入、参数解析、守卫、拦截器等元信息。装饰器不会改变 TypeScript 最终仍编译成 JS 的事实，但它配合 reflect-metadata 可以让框架在运行时读取这些元数据，实现 IoC 和声明式编程。
+
+这句很加分。
+
+---
+
+**10. DTO 和类型校验**
+
+NestJS 项目里常见 DTO：
+
+```
+export class CreateUserDto {
+  name: string
+  age: number
+}
+```
+
+配合 `class-validator`：
+
+```
+import { IsString, IsNumber, Min } from 'class-validator'
+
+export class CreateUserDto {
+  @IsString()
+  name: string
+
+  @IsNumber()
+  @Min(0)
+  age: number
+}
+```
+
+Controller：
+
+```
+@Post()
+create(@Body() dto: CreateUserDto) {
+  return this.userService.create(dto)
+}
+```
+
+这里 TS 类型主要用于开发阶段检查。
+
+而 `class-validator` 是运行时校验。
+
+你要分清：
+
+```
+TypeScript 类型：编译阶段检查，运行时会被擦除
+class-validator：运行时校验真实请求数据
+```
+
+这是 NestJS 面试常问点。
+
+---
+
+**11. TS 类型会在运行时存在吗**
+
+大多数不会。
+
+比如：
+
+```
+function add(a: number, b: number): number {
+  return a + b
+}
+```
+
+编译成 JS 后大概是：
+
+```
+function add(a, b) {
+  return a + b
+}
+```
+
+`: number` 没了。
+
+所以：
+
+> TS 类型只在编译阶段生效，运行时不存在。
+
+这就是为什么后端接口入参不能只靠 TS 类型，还要用 DTO 校验。
+
+---
+
+**12. 常用工具类型**
+
+先掌握这几个：
+
+`Partial<T>`：全部变可选。
+
+```
+interface User {
+  name: string
+  age: number
+}
+
+type UpdateUser = Partial<User>
+```
+
+等价于：
+
+```
+{
+  name?: string
+  age?: number
+}
+```
+
+`Pick<T, K>`：挑选部分属性。
+
+```
+type UserName = Pick<User, 'name'>
+```
+
+`Omit<T, K>`：排除部分属性。
+
+```
+type UserWithoutAge = Omit<User, 'age'>
+```
+
+`Record<K, T>`：构造对象类型。
+
+```
+type RoleMap = Record<string, number>
+```
+
+等价于：
+
+```
+{
+  [key: string]: number
+}
+```
+
+`Required<T>`：全部变必填。
+
+```
+type FullUser = Required<User>
+```
+
+---
+
+**13. 你结合项目可以怎么说**
+
+你可以在面试中这样描述你项目里的 TS：
+
+> 在 mianshiwang 项目的后端中，我使用 NestJS，它本身是基于 TypeScript 的。项目里 Controller、Service、Module 都是 class，并且通过装饰器声明路由、依赖注入和模块关系，比如 `@Controller`、`@Get`、`@Post`、`@Injectable`。
+> 
+> 对接口入参，我会用 DTO class 描述数据结构，并结合 `class-validator` 做运行时参数校验。TypeScript 本身只能在编译阶段检查类型，不能保证用户真实请求的数据一定合法，所以后端仍然需要运行时校验。
+> 
+> 在接口返回和业务数据结构上，可以用 interface/type 描述模型，用泛型封装统一响应结构，比如 `ApiResponse<T>`，这样能让代码提示更清晰，也能减少字段写错、类型不一致的问题。
