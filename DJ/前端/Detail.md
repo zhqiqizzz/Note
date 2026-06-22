@@ -7018,6 +7018,4476 @@ mounted() {
 > 
 > 所以 SSR 的关键是服务端先渲染出有内容的 HTML，让用户更快看到首屏，客户端 JS 再通过 hydrate 接管页面，保留前端框架的交互能力。SSR 首屏快、SEO 好，但服务端压力大，需要处理数据获取、HTML 生成、hydration mismatch 等问题。
 
+# 各种宽度高度区分
+
+当然，这块确实很容易乱。你可以把浏览器里的宽高分成 4 类：
+
+```
+元素尺寸：clientWidth / offsetWidth / scrollWidth
+元素位置：offsetTop / clientTop / getBoundingClientRect()
+窗口尺寸：innerWidth / outerWidth / documentElement.clientWidth
+屏幕尺寸：screen.width / screen.availWidth
+```
+
+我们逐个区分。
+
+---
+
+**一、元素尺寸相关**
+
+假设有这个元素：
+
+```
+.box {
+  width: 200px;
+  height: 100px;
+  padding: 20px;
+  border: 10px solid #000;
+  margin: 30px;
+  overflow: auto;
+}
+```
+
+HTML：
+
+```
+<div class="box">
+  很多很多内容...
+</div>
+```
+
+---
+
+**1. clientWidth / clientHeight**
+
+```
+el.clientWidth
+el.clientHeight
+```
+
+表示：
+
+```
+内容区域 + padding
+不包括 border
+不包括 margin
+不包括滚动条
+```
+
+如果：
+
+```
+width: 200px;
+padding: 20px;
+border: 10px;
+```
+
+标准盒模型下：
+
+```
+clientWidth = content width + padding-left + padding-right
+clientWidth = 200 + 20 + 20 = 240
+```
+
+注意：如果出现垂直滚动条，`clientWidth` 通常会减去滚动条宽度。
+
+常用场景：
+
+```
+获取元素内部可视区域大小
+判断容器可视宽高
+```
+
+---
+
+**2. offsetWidth / offsetHeight**
+
+```
+el.offsetWidth
+el.offsetHeight
+```
+
+表示：
+
+```
+内容区域 + padding + border + 滚动条
+不包括 margin
+```
+
+同样：
+
+```
+width: 200px;
+padding: 20px;
+border: 10px;
+```
+
+标准盒模型下：
+
+```
+offsetWidth = 200 + 40 + 20 = 260
+```
+
+如果有滚动条，滚动条也算在里面。
+
+常用场景：
+
+```
+获取元素实际占据的视觉尺寸
+```
+
+注意：
+
+> `offsetWidth` 不包含 margin。
+
+很多人会误以为包含 margin，不包含。
+
+---
+
+**3. scrollWidth / scrollHeight**
+
+```
+el.scrollWidth
+el.scrollHeight
+```
+
+表示：
+
+```
+元素内容的完整尺寸，包括因为溢出而不可见的部分
+```
+
+比如：
+
+```
+.box {
+  width: 200px;
+  height: 100px;
+  overflow: auto;
+}
+```
+
+里面内容实际高度是 500px。
+
+那么可能是：
+
+```
+clientHeight = 100
+scrollHeight = 500
+```
+
+常用来判断是否出现滚动：
+
+```
+const hasVerticalScroll = el.scrollHeight > el.clientHeight
+```
+
+横向滚动：
+
+```
+const hasHorizontalScroll = el.scrollWidth > el.clientWidth
+```
+
+---
+
+**4. scrollTop / scrollLeft**
+
+```
+el.scrollTop
+el.scrollLeft
+```
+
+表示：
+
+```
+元素已经滚动出去的距离
+```
+
+比如一个容器向下滚动了 100px：
+
+```
+el.scrollTop // 100
+```
+
+常用场景：
+
+```
+if (el.scrollTop + el.clientHeight >= el.scrollHeight) {
+  console.log('滚动到底部')
+}
+```
+
+---
+
+**元素尺寸总结**
+
+| 属性            | 包含 content | padding | border | margin | 滚动条  | 溢出内容 |
+| ------------- | ---------- | ------- | ------ | ------ | ---- | ---- |
+| `clientWidth` | 是          | 是       | 否      | 否      | 否    | 否    |
+| `offsetWidth` | 是          | 是       | 是      | 否      | 是    | 否    |
+| `scrollWidth` | 是          | 是       | 否      | 否      | 通常不算 | 是    |
+
+---
+
+**二、元素位置相关**
+
+**1. offsetTop / offsetLeft**
+
+```
+el.offsetTop
+el.offsetLeft
+```
+
+表示：
+
+> 元素 border box 相对于 offsetParent 的偏移距离。
+
+`offsetParent` 通常是最近的有定位的祖先元素。
+
+比如：
+
+```
+.parent {
+  position: relative;
+}
+
+.child {
+  margin-top: 20px;
+}
+```
+
+```
+child.offsetTop
+```
+
+表示 `.child` 距离 `.parent` 顶部的距离。
+
+注意：
+
+```
+offsetTop 是相对 offsetParent，不一定是相对视口，也不一定是相对页面。
+```
+
+---
+
+**2. clientTop / clientLeft**
+
+```
+el.clientTop
+el.clientLeft
+```
+
+通常表示：
+
+```
+上边框宽度
+左边框宽度
+```
+
+比如：
+
+```
+.box {
+  border-top: 10px solid red;
+  border-left: 8px solid blue;
+}
+```
+
+```
+box.clientTop  // 10
+box.clientLeft // 8
+```
+
+日常用得不多。
+
+---
+
+**3. getBoundingClientRect()**
+
+```
+const rect = el.getBoundingClientRect()
+```
+
+返回元素相对于视口的位置和尺寸：
+
+```
+{
+  x,
+  y,
+  width,
+  height,
+  top,
+  right,
+  bottom,
+  left
+}
+```
+
+特点：
+
+```
+相对于视口
+包含 padding + border
+会受 transform 影响
+返回值可能是小数
+```
+
+比如：
+
+```
+rect.top
+```
+
+表示元素顶部距离视口顶部的距离。
+
+如果页面向下滚动，`rect.top` 会变化。
+
+常用场景：
+
+```
+判断元素是否进入视口
+获取元素精确位置
+做弹窗/tooltip 定位
+```
+
+判断是否进入视口：
+
+```
+const rect = el.getBoundingClientRect()
+
+const isVisible =
+  rect.top < window.innerHeight &&
+  rect.bottom > 0
+```
+
+---
+
+**如果要相对于整个页面的位置**
+
+`getBoundingClientRect()` 是相对视口。
+
+如果要相对文档页面：
+
+```
+const rect = el.getBoundingClientRect()
+
+const pageTop = rect.top + window.scrollY
+const pageLeft = rect.left + window.scrollX
+```
+
+---
+
+**三、窗口尺寸相关**
+
+**1. window.innerWidth / innerHeight**
+
+```
+window.innerWidth
+window.innerHeight
+```
+
+表示：
+
+```
+浏览器视口的内部宽高
+包含滚动条
+```
+
+也就是当前页面可视区域大小。
+
+常用：
+
+```
+if (window.innerWidth < 768) {
+  console.log('移动端布局')
+}
+```
+
+---
+
+**2. document.documentElement.clientWidth / clientHeight**
+
+```
+document.documentElement.clientWidth
+document.documentElement.clientHeight
+```
+
+表示：
+
+```
+HTML 根元素的可视区域宽高
+通常不包含滚动条
+```
+
+很多时候它和 `window.innerWidth` 接近，但差别在于滚动条。
+
+例如：
+
+```
+window.innerWidth =  1920
+document.documentElement.clientWidth = 1903
+```
+
+差的 17px 可能就是滚动条宽度。
+
+移动端适配时常用：
+
+```
+const width = document.documentElement.clientWidth
+```
+
+因为它更接近布局视口宽度。
+
+---
+
+**3. window.outerWidth / outerHeight**
+
+```
+window.outerWidth
+window.outerHeight
+```
+
+表示：
+
+```
+浏览器整个窗口的宽高
+包括地址栏、工具栏、边框等浏览器 UI
+```
+
+前端布局很少用。
+
+---
+
+**4. window.scrollX / scrollY**
+
+```
+window.scrollX
+window.scrollY
+```
+
+表示页面横向 / 纵向滚动距离。
+
+等价常见旧写法：
+
+```
+window.pageXOffset
+window.pageYOffset
+```
+
+例如页面向下滚动 500px：
+
+```
+window.scrollY // 500
+```
+
+---
+
+**四、页面文档尺寸**
+
+**1. document.documentElement.scrollHeight**
+
+```
+document.documentElement.scrollHeight
+```
+
+表示整个页面内容高度。
+
+比如页面总高度是 3000px，视口高度是 800px：
+
+```
+document.documentElement.scrollHeight // 3000
+document.documentElement.clientHeight // 800
+```
+
+判断页面滚动到底部：
+
+```
+const html = document.documentElement
+
+if (window.scrollY + html.clientHeight >= html.scrollHeight) {
+  console.log('到底了')
+}
+```
+
+---
+
+**2. body 和 documentElement 的区别**
+
+有时候你会看到：
+
+```
+document.body.scrollHeight
+document.documentElement.scrollHeight
+```
+
+不同浏览器、不同文档模式下可能有差异。
+
+现在一般优先用：
+
+```
+document.documentElement
+```
+
+也就是 `<html>` 元素。
+
+兼容写法：
+
+```
+const scrollTop =
+  window.scrollY ||
+  document.documentElement.scrollTop ||
+  document.body.scrollTop
+```
+
+---
+
+**五、屏幕尺寸相关**
+
+**1. screen.width / screen.height**
+
+```
+screen.width
+screen.height
+```
+
+表示：
+
+```
+设备屏幕的 CSS 像素宽高
+```
+
+不是浏览器视口。
+
+比如你浏览器只开半屏，`screen.width` 还是整个屏幕宽度。
+
+---
+
+**2. screen.availWidth / availHeight**
+
+```
+screen.availWidth
+screen.availHeight
+```
+
+表示：
+
+```
+屏幕可用区域
+```
+
+会扣掉系统任务栏、Dock 等区域。
+
+前端业务里用得不多。
+
+---
+
+**六、移动端还要注意 visualViewport**
+
+移动端有地址栏、键盘、缩放这些因素。
+
+可以用：
+
+```
+window.visualViewport.width
+window.visualViewport.height
+```
+
+表示视觉视口大小。
+
+比如手机键盘弹出后，`visualViewport.height` 会变小。
+
+有时候处理输入框被键盘遮挡，会用到它。
+
+---
+
+**七、最常用怎么选**
+
+如果你想获取元素可视内容区域：
+
+```
+el.clientWidth
+el.clientHeight
+```
+
+如果你想获取元素实际边框盒尺寸：
+
+```
+el.offsetWidth
+el.offsetHeight
+```
+
+如果你想知道内容是否溢出：
+
+```
+el.scrollHeight > el.clientHeight
+```
+
+如果你想获取元素相对视口位置：
+
+```
+el.getBoundingClientRect()
+```
+
+如果你想获取视口宽高：
+
+```
+window.innerWidth
+window.innerHeight
+```
+
+如果你想获取布局视口宽高，特别是移动端适配：
+
+```
+document.documentElement.clientWidth
+document.documentElement.clientHeight
+```
+
+如果你想获取页面滚动距离：
+
+```
+window.scrollY
+window.scrollX
+```
+
+如果你想获取页面总高度：
+
+```
+document.documentElement.scrollHeight
+```
+
+---
+
+**八、面试版总结**
+
+可以这样说：
+
+> 元素尺寸常见有 `clientWidth`、`offsetWidth`、`scrollWidth`。`clientWidth` 包含 content 和 padding，不包含 border、margin 和滚动条；`offsetWidth` 包含 content、padding、border 和滚动条，不包含 margin；`scrollWidth` 表示内容的完整宽度，包括溢出不可见部分。高度同理。
+> 
+> `getBoundingClientRect()` 返回元素相对于视口的位置和尺寸，包含 padding 和 border，会受 transform 影响，常用于判断元素是否进入视口或做浮层定位。`offsetTop/offsetLeft` 是相对 `offsetParent` 的偏移，不一定是相对视口。
+> 
+> 窗口尺寸里，`window.innerWidth` 表示视口内部宽度，通常包含滚动条；`document.documentElement.clientWidth` 表示根元素可视宽度，通常不包含滚动条，更常用于布局计算。`screen.width` 是整个屏幕宽度，不等于浏览器视口宽度。
+
+
+# 微任务
+
+> **微任务是“当前这轮同步代码执行完后、下一个宏任务开始前，马上要清掉的一批小回调”。**
+
+它们的共同点是：**优先级高、执行时机靠前、会在当前宏任务结束后立刻执行**。
+
+---
+
+**先记住微任务的执行位置**
+
+```
+console.log('script start')
+
+setTimeout(() => {
+  console.log('timeout')
+}, 0)
+
+Promise.resolve().then(() => {
+  console.log('promise then')
+})
+
+queueMicrotask(() => {
+  console.log('queueMicrotask')
+})
+
+console.log('script end')
+```
+
+执行顺序：
+
+```
+script start
+script end
+promise then
+queueMicrotask
+timeout
+```
+
+为什么？
+
+因为整段 script 本身是一个宏任务。
+
+这个宏任务里：
+
+```
+同步代码先执行
+微任务放进微任务队列
+setTimeout 放进宏任务队列
+```
+
+当前 script 宏任务结束后，浏览器先清空微任务：
+
+```
+Promise.then
+queueMicrotask
+```
+
+然后才执行下一个宏任务：
+
+```
+setTimeout
+```
+
+---
+
+**一、Promise.then 怎么理解**
+
+`Promise.then` 是最常见的微任务。
+
+```
+Promise.resolve().then(() => {
+  console.log('then')
+})
+```
+
+它的意思不是“立刻执行 then 里的回调”。
+
+而是：
+
+> Promise 状态确定后，把 then 回调放入微任务队列，等当前同步代码执行完再执行。
+
+例如：
+
+```
+const p = Promise.resolve()
+
+p.then(() => {
+  console.log(1)
+})
+
+console.log(2)
+```
+
+输出：
+
+```
+2
+1
+```
+
+因为：
+
+```
+console.log(2)
+```
+
+是同步代码，先执行。
+
+`then` 回调是微任务，后执行。
+
+记忆方式：
+
+```
+Promise.then：本轮任务收尾时执行
+```
+
+你可以把它理解成：
+
+> “我不打断当前同步代码，但我想尽快执行。”
+
+---
+
+**二、queueMicrotask 怎么理解**
+
+`queueMicrotask` 是浏览器提供的一个 API，用来**直接往微任务队列里塞一个回调**。
+
+```
+queueMicrotask(() => {
+  console.log('microtask')
+})
+```
+
+它和：
+
+```
+Promise.resolve().then(() => {
+  console.log('microtask')
+})
+```
+
+执行时机类似。
+
+区别是：
+
+```
+queueMicrotask 语义更直接
+Promise.then 是借 Promise 间接创建微任务
+```
+
+比如你写工具函数时，想让某个回调延后到同步代码之后、但又比 setTimeout 更早：
+
+```
+function updateLater(callback) {
+  queueMicrotask(callback)
+}
+
+console.log('start')
+
+updateLater(() => {
+  console.log('update')
+})
+
+console.log('end')
+```
+
+输出：
+
+```
+start
+end
+update
+```
+
+记忆方式：
+
+```
+queueMicrotask：手动插队到微任务队列
+```
+
+它就是最直白的：
+
+> “把这个函数放进微任务队列。”
+
+---
+
+**三、MutationObserver 怎么理解**
+
+`MutationObserver` 用来监听 DOM 变化。
+
+比如监听某个元素的子节点变化：
+
+```
+const target = document.querySelector('#app')
+
+const observer = new MutationObserver(() => {
+  console.log('DOM changed')
+})
+
+observer.observe(target, {
+  childList: true
+})
+
+target.appendChild(document.createElement('div'))
+
+console.log('end')
+```
+
+输出通常是：
+
+```
+end
+DOM changed
+```
+
+为什么？
+
+因为 DOM 变化发生后，`MutationObserver` 的回调不会立刻同步执行，而是作为微任务执行。
+
+它适合监听：
+
+```
+DOM 子节点变化
+属性变化
+文本变化
+```
+
+比如：
+
+```
+observer.observe(target, {
+  childList: true,
+  attributes: true,
+  characterData: true,
+  subtree: true
+})
+```
+
+记忆方式：
+
+```
+MutationObserver：DOM 变了，等当前同步代码结束后统一通知你
+```
+
+为什么不立刻通知？
+
+因为同步代码里可能连续改很多次 DOM：
+
+```
+target.appendChild(a)
+target.appendChild(b)
+target.appendChild(c)
+```
+
+如果每改一次就同步执行回调，性能很差。
+
+所以浏览器会把 DOM 变化收集起来，放到微任务阶段统一回调。
+
+---
+
+**四、这三个怎么一起记**
+
+可以这样记：
+
+```
+Promise.then：异步结果准备好了，尽快回调
+queueMicrotask：我主动安排一个微任务
+MutationObserver：DOM 变化后，浏览器安排一个微任务通知我
+```
+
+再压缩成一句：
+
+```
+Promise 处理异步结果
+queueMicrotask 手动排微任务
+MutationObserver 监听 DOM 变化
+```
+
+---
+
+**五、它们和 setTimeout 的区别**
+
+```
+console.log('start')
+
+setTimeout(() => {
+  console.log('timeout')
+}, 0)
+
+queueMicrotask(() => {
+  console.log('microtask')
+})
+
+console.log('end')
+```
+
+输出：
+
+```
+start
+end
+microtask
+timeout
+```
+
+因为：
+
+```
+微任务在当前宏任务结束后立刻清空
+setTimeout 是下一个宏任务
+```
+
+所以微任务比 `setTimeout` 更早。
+
+---
+
+**六、微任务会全部清空**
+
+这个很重要。
+
+```
+Promise.resolve().then(() => {
+  console.log(1)
+
+  Promise.resolve().then(() => {
+    console.log(2)
+  })
+})
+
+Promise.resolve().then(() => {
+  console.log(3)
+})
+```
+
+输出：
+
+```
+1
+3
+2
+```
+
+过程：
+
+```
+初始微任务队列：then1, then3
+执行 then1：输出 1，又加入 then2
+队列变成：then3, then2
+执行 then3：输出 3
+执行 then2：输出 2
+```
+
+也就是说：
+
+> 当前宏任务结束后，会一直清空微任务队列，期间新加入的微任务也会继续执行。
+
+---
+
+**七、为什么微任务不能滥用**
+
+因为微任务必须清空后，浏览器才有机会渲染和执行下一个宏任务。
+
+如果你这样写：
+
+```
+function loop() {
+  queueMicrotask(loop)
+}
+
+loop()
+```
+
+微任务会无限产生。
+
+结果是：
+
+```
+微任务队列永远清不完
+页面无法渲染
+setTimeout 也没机会执行
+```
+
+这会导致页面卡死。
+
+---
+
+**八、面试版回答**
+
+可以这样说：
+
+> 微任务是在当前宏任务执行完成后、下一个宏任务开始前执行的一类任务。常见微任务有 `Promise.then`、`queueMicrotask`、`MutationObserver`。`Promise.then` 表示 Promise 状态确定后的回调，会进入微任务队列；`queueMicrotask` 是直接手动往微任务队列里添加任务；`MutationObserver` 用来监听 DOM 变化，它的回调也会在微任务阶段统一执行。
+> 
+> 微任务的特点是优先级高于宏任务。当前同步代码执行完后，事件循环会先清空所有微任务，包括微任务执行过程中新增的微任务，然后才会进入页面渲染或下一个宏任务。所以 `Promise.then` 通常会比 `setTimeout` 更早执行，但也不能无限创建微任务，否则会阻塞渲染。
+
+# 前端常见发请求方式
+
+可以按“时代”来记：
+
+```
+原生表单提交
+XMLHttpRequest / Ajax
+fetch
+axios
+JSONP
+WebSocket / SSE
+```
+
+日常面试重点是：
+
+```
+Ajax / XMLHttpRequest
+fetch
+axios
+JSONP
+```
+
+---
+
+**一、Ajax 是什么**
+
+Ajax 全称：
+
+```
+Asynchronous JavaScript and XML
+```
+
+中文一般叫：
+
+```
+异步 JavaScript 和 XML
+```
+
+但现在它不一定传 XML，更多是 JSON。
+
+Ajax 不是某一个具体 API，而是一种技术思想：
+
+> 页面不整体刷新，通过 JavaScript 异步向服务器请求数据，再局部更新页面。
+
+早期 Ajax 主要依赖：
+
+```
+XMLHttpRequest
+```
+
+所以很多时候大家会把 Ajax 和 XHR 混着说。
+
+---
+
+**二、XMLHttpRequest**
+
+`XMLHttpRequest` 是浏览器原生提供的请求 API。
+
+基础写法：
+
+```
+const xhr = new XMLHttpRequest()
+
+xhr.open('GET', '/api/user', true)
+
+xhr.onreadystatechange = function () {
+  if (xhr.readyState === 4) {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      console.log(JSON.parse(xhr.responseText))
+    } else {
+      console.log('请求失败', xhr.status)
+    }
+  }
+}
+
+xhr.onerror = function () {
+  console.log('网络错误')
+}
+
+xhr.send()
+```
+
+---
+
+**readyState 状态**
+
+XHR 有 5 个状态：
+
+```
+0：UNSENT，未调用 open
+1：OPENED，已调用 open
+2：HEADERS_RECEIVED，已收到响应头
+3：LOADING，响应体接收中
+4：DONE，请求完成
+```
+
+一般只关心：
+
+```
+xhr.readyState === 4
+```
+
+表示请求结束。
+
+---
+
+**GET 请求**
+
+```
+const xhr = new XMLHttpRequest()
+
+xhr.open('GET', '/api/user?id=1')
+
+xhr.onload = function () {
+  if (xhr.status >= 200 && xhr.status < 300) {
+    console.log(JSON.parse(xhr.responseText))
+  }
+}
+
+xhr.send()
+```
+
+---
+
+**POST 请求**
+
+```
+const xhr = new XMLHttpRequest()
+
+xhr.open('POST', '/api/user')
+
+xhr.setRequestHeader('Content-Type', 'application/json')
+
+xhr.onload = function () {
+  console.log(JSON.parse(xhr.responseText))
+}
+
+xhr.send(JSON.stringify({
+  name: 'Tom'
+}))
+```
+
+---
+
+**XHR 的特点**
+
+优点：
+
+```
+兼容性好
+支持上传进度
+支持取消请求 abort
+支持设置超时
+```
+
+比如取消：
+
+```
+xhr.abort()
+```
+
+超时：
+
+```
+xhr.timeout = 5000
+
+xhr.ontimeout = function () {
+  console.log('请求超时')
+}
+```
+
+上传进度：
+
+```
+xhr.upload.onprogress = function (event) {
+  const percent = event.loaded / event.total * 100
+  console.log(percent)
+}
+```
+
+缺点：
+
+```
+API 比较老
+写法繁琐
+基于事件回调
+不天然支持 Promise
+```
+
+---
+
+**三、fetch**
+
+`fetch` 是现代浏览器提供的新请求 API，基于 Promise。
+
+基础 GET：
+
+```
+fetch('/api/user')
+  .then(response => response.json())
+  .then(data => {
+    console.log(data)
+  })
+  .catch(error => {
+    console.log(error)
+  })
+```
+
+POST：
+
+```
+fetch('/api/user', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'Tom'
+  })
+})
+  .then(response => response.json())
+  .then(data => {
+    console.log(data)
+  })
+```
+
+配合 async/await：
+
+```
+async function getUser() {
+  try {
+    const response = await fetch('/api/user')
+    const data = await response.json()
+    console.log(data)
+  } catch (err) {
+    console.log(err)
+  }
+}
+```
+
+---
+
+**fetch 的重要特点**
+
+**1. fetch 默认只在网络错误时 reject**
+
+这点很容易踩坑。
+
+```
+fetch('/api/not-found')
+  .then(response => {
+    console.log(response.status) // 404
+  })
+  .catch(err => {
+    console.log('catch')
+  })
+```
+
+如果服务器返回 404 或 500，`fetch` 不会自动进入 `catch`。
+
+因为它认为：
+
+```
+请求成功到达服务器，并收到了响应
+```
+
+只有网络错误、请求被拦截、跨域失败等才会 reject。
+
+所以要自己判断：
+
+```
+async function request(url) {
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error(`HTTP error: ${response.status}`)
+  }
+
+  return response.json()
+}
+```
+
+`response.ok` 表示状态码是否在：
+
+```
+200 ~ 299
+```
+
+---
+
+**2. fetch 默认不带 cookie**
+
+跨域请求时，fetch 默认不携带 cookie。
+
+需要：
+
+```
+fetch('https://api.example.com/user', {
+  credentials: 'include'
+})
+```
+
+同源请求想明确携带：
+
+```
+credentials: 'same-origin'
+```
+
+几个值：
+
+```
+omit：不携带 cookie
+same-origin：同源携带，默认值
+include：跨域也携带
+```
+
+---
+
+**3. fetch 支持 AbortController 取消请求**
+
+```
+const controller = new AbortController()
+
+fetch('/api/user', {
+  signal: controller.signal
+}).catch(err => {
+  if (err.name === 'AbortError') {
+    console.log('请求取消')
+  }
+})
+
+controller.abort()
+```
+
+---
+
+**4. fetch 原生不直接支持上传进度**
+
+XHR 有：
+
+```
+xhr.upload.onprogress
+```
+
+fetch 标准使用上不如 XHR 方便获取上传进度。
+
+所以上传文件需要进度条时，很多项目仍然用 XHR 或 axios。
+
+---
+
+**四、axios**
+
+axios 是一个常用第三方请求库。
+
+它底层在浏览器中通常基于 XHR，在 Node 中基于 http 模块。
+
+GET：
+
+```
+axios.get('/api/user', {
+  params: {
+    id: 1
+  }
+}).then(res => {
+  console.log(res.data)
+})
+```
+
+POST：
+
+```
+axios.post('/api/user', {
+  name: 'Tom'
+}).then(res => {
+  console.log(res.data)
+})
+```
+
+async/await：
+
+```
+const res = await axios.get('/api/user')
+console.log(res.data)
+```
+
+---
+
+**axios 的特点**
+
+```
+基于 Promise
+自动转换 JSON
+请求和响应拦截器
+统一错误处理
+支持取消请求
+支持超时
+支持请求/响应转换
+支持上传进度
+```
+
+拦截器：
+
+```
+axios.interceptors.request.use(config => {
+  config.headers.Authorization = 'Bearer token'
+  return config
+})
+
+axios.interceptors.response.use(
+  response => response.data,
+  error => {
+    if (error.response?.status === 401) {
+      console.log('跳转登录')
+    }
+    return Promise.reject(error)
+  }
+)
+```
+
+这就是为什么企业项目里常封装 axios。
+
+---
+
+**五、fetch 和 axios 区别**
+
+|对比|fetch|axios|
+|---|---|---|
+|类型|浏览器原生 API|第三方库|
+|底层|浏览器实现|浏览器端通常基于 XHR|
+|Promise|原生支持|支持|
+|JSON 处理|需要手动 `res.json()`|自动处理|
+|HTTP 错误|404/500 不会 reject|默认会 reject|
+|拦截器|原生没有|有|
+|超时|需配合 AbortController|内置 timeout|
+|取消请求|AbortController|支持|
+|上传进度|不方便|支持较好|
+|兼容性|现代浏览器|兼容性更可控|
+
+---
+
+**六、JSONP**
+
+JSONP 是早期解决跨域的一种方式。
+
+利用的是：
+
+> `<script>` 标签不受同源策略限制。
+
+比如：
+
+```
+<script src="https://api.example.com/user?callback=handleUser"></script>
+```
+
+服务端返回：
+
+```
+handleUser({
+  name: 'Tom'
+})
+```
+
+前端定义：
+
+```
+function handleUser(data) {
+  console.log(data)
+}
+```
+
+特点：
+
+```
+只能 GET
+不是真正的 Ajax
+安全性较差
+需要服务端配合
+现在更多用 CORS 替代
+```
+
+---
+
+**七、表单提交**
+
+最传统的方式：
+
+```
+<form action="/login" method="post">
+  <input name="username">
+  <input name="password">
+  <button type="submit">提交</button>
+</form>
+```
+
+特点：
+
+```
+会导致页面跳转或刷新
+不适合 SPA 局部更新
+但上传文件、兼容老环境时仍有意义
+```
+
+---
+
+**八、WebSocket 和 SSE**
+
+这两个不是普通 HTTP 请求，但也是前端和服务器通信方式。
+
+**WebSocket**
+
+双向通信：
+
+```
+const ws = new WebSocket('wss://example.com/socket')
+
+ws.onmessage = event => {
+  console.log(event.data)
+}
+
+ws.send('hello')
+```
+
+适合：
+
+```
+聊天
+实时协作
+在线游戏
+行情推送
+```
+
+---
+
+**SSE**
+
+Server-Sent Events，服务端单向推送给客户端：
+
+```
+const eventSource = new EventSource('/events')
+
+eventSource.onmessage = event => {
+  console.log(event.data)
+}
+```
+
+适合：
+
+```
+消息通知
+日志推送
+服务端状态推送
+```
+
+---
+
+**九、实际项目里怎么选**
+
+普通业务接口：
+
+```
+axios / fetch
+```
+
+企业项目常用：
+
+```
+axios + 统一封装 + 拦截器
+```
+
+需要上传进度：
+
+```
+XHR / axios
+```
+
+简单现代项目：
+
+```
+fetch
+```
+
+老式跨域兼容：
+
+```
+JSONP，现在较少
+```
+
+实时双向通信：
+
+```
+WebSocket
+```
+
+服务端单向推送：
+
+```
+SSE
+```
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> 前端常见发请求方式有原生表单提交、XMLHttpRequest，也就是常说的 Ajax、fetch、axios、JSONP，以及 WebSocket、SSE 这类实时通信方式。Ajax 本质是一种异步请求并局部更新页面的思想，早期主要通过 XMLHttpRequest 实现。XHR 兼容性好，支持超时、取消、上传进度，但写法比较繁琐，基于事件回调。
+> 
+> fetch 是现代浏览器原生提供的请求 API，基于 Promise，写法更简洁，可以配合 async/await。但 fetch 对 404、500 不会自动 reject，需要自己判断 `response.ok`；跨域带 cookie 要设置 `credentials: 'include'`；取消请求要配合 AbortController。
+> 
+> axios 是第三方请求库，浏览器端通常基于 XHR，封装了 Promise、自动 JSON 转换、拦截器、超时、取消请求、上传进度等能力，所以企业项目里经常基于 axios 做统一请求封装。JSONP 是利用 script 标签不受同源限制实现跨域，只支持 GET，现在大多被 CORS 替代。
+> 
+# Map,Weakmap
+可以，这个题要从三个维度讲：**键的类型、引用强弱、能不能遍历**。
+
+**Map 是什么**
+
+`Map` 是一种键值对集合。
+
+和普通对象相比，`Map` 的 key 可以是任意类型：
+
+```
+const map = new Map()
+
+const obj = { id: 1 }
+
+map.set('name', 'Tom')
+map.set(1, 'number key')
+map.set(obj, 'object key')
+
+console.log(map.get(obj)) // object key
+```
+
+`Map` 的 key 不只限于字符串或 Symbol，对象、函数、数组都可以作为 key。
+
+---
+
+**WeakMap 是什么**
+
+`WeakMap` 也是键值对集合，但它更特殊：
+
+```
+const weakMap = new WeakMap()
+
+const obj = { id: 1 }
+
+weakMap.set(obj, 'some data')
+
+console.log(weakMap.get(obj)) // some data
+```
+
+`WeakMap` 的 key 必须是对象，不能是基本类型。
+
+```
+const weakMap = new WeakMap()
+
+weakMap.set('name', 'Tom') // 报错
+```
+
+因为字符串是基本类型，不能作为 WeakMap 的 key。
+
+---
+
+**区别一：key 类型不同**
+
+`Map` 的 key 可以是任意类型：
+
+```
+const map = new Map()
+
+map.set('a', 1)
+map.set(1, 2)
+map.set(true, 3)
+map.set({}, 4)
+map.set(function () {}, 5)
+```
+
+`WeakMap` 的 key 只能是对象：
+
+```
+const weakMap = new WeakMap()
+
+weakMap.set({}, 1)
+weakMap.set([], 2)
+weakMap.set(function () {}, 3)
+```
+
+不能这样：
+
+```
+weakMap.set('a', 1)
+weakMap.set(1, 2)
+weakMap.set(true, 3)
+```
+
+---
+
+**区别二：引用强弱不同**
+
+这是最核心的区别。
+
+`Map` 对 key 是**强引用**。
+
+```
+let obj = { name: 'Tom' }
+
+const map = new Map()
+map.set(obj, 'user info')
+
+obj = null
+```
+
+虽然你把：
+
+```
+obj = null
+```
+
+但 `Map` 里面还保存着这个对象作为 key。
+
+所以这个对象不会被垃圾回收。
+
+因为：
+
+```
+Map 还强引用着这个对象
+```
+
+如果你不手动删除：
+
+```
+map.delete(obj)
+```
+
+或者清空：
+
+```
+map.clear()
+```
+
+对象就可能一直留在内存里。
+
+---
+
+`WeakMap` 对 key 是**弱引用**。
+
+```
+let obj = { name: 'Tom' }
+
+const weakMap = new WeakMap()
+weakMap.set(obj, 'user info')
+
+obj = null
+```
+
+当外部没有其他地方引用这个对象时，即使它曾经作为 WeakMap 的 key，垃圾回收机制也可以回收它。
+
+因为：
+
+```
+WeakMap 不会阻止 key 被垃圾回收
+```
+
+这就是 WeakMap 名字里 `Weak` 的含义。
+
+---
+
+**怎么理解强引用和弱引用**
+
+强引用：
+
+```
+let obj = { name: 'Tom' }
+
+const arr = [obj]
+
+obj = null
+```
+
+虽然 `obj` 变量不指向这个对象了，但数组里还引用着它。
+
+所以对象还活着。
+
+弱引用：
+
+```
+let obj = { name: 'Tom' }
+
+const weakMap = new WeakMap()
+weakMap.set(obj, 'data')
+
+obj = null
+```
+
+如果除了 WeakMap，没有其他引用了，对象可以被回收。
+
+WeakMap 不会“拦着”垃圾回收。
+
+---
+
+**区别三：WeakMap 不能遍历**
+
+`Map` 可以遍历：
+
+```
+const map = new Map()
+
+map.set('a', 1)
+map.set('b', 2)
+
+for (const [key, value] of map) {
+  console.log(key, value)
+}
+
+console.log(map.keys())
+console.log(map.values())
+console.log(map.entries())
+console.log(map.size)
+```
+
+`WeakMap` 不能遍历：
+
+```
+const weakMap = new WeakMap()
+
+weakMap.set({}, 1)
+
+weakMap.keys() // 不存在
+weakMap.values() // 不存在
+weakMap.entries() // 不存在
+weakMap.size // undefined
+```
+
+为什么 WeakMap 不能遍历？
+
+因为它的 key 可能随时被垃圾回收。
+
+如果允许遍历，那你就能观察到垃圾回收什么时候发生。
+
+而垃圾回收是不确定的，由 JS 引擎自己决定。
+
+所以 WeakMap 不提供遍历能力，也没有 `size`。
+
+---
+
+**Map 常用 API**
+
+```
+const map = new Map()
+
+map.set('name', 'Tom')
+map.get('name') // Tom
+map.has('name') // true
+map.delete('name')
+map.clear()
+map.size
+```
+
+遍历：
+
+```
+for (const [key, value] of map) {
+  console.log(key, value)
+}
+```
+
+---
+
+**WeakMap 常用 API**
+
+WeakMap API 很少：
+
+```
+const weakMap = new WeakMap()
+const obj = {}
+
+weakMap.set(obj, 'data')
+weakMap.get(obj)
+weakMap.has(obj)
+weakMap.delete(obj)
+```
+
+没有：
+
+```
+weakMap.size
+weakMap.clear()
+weakMap.keys()
+weakMap.values()
+weakMap.entries()
+```
+
+---
+
+**WeakMap 有什么用**
+
+**1. 存储对象的私有数据**
+
+```
+const privateData = new WeakMap()
+
+class User {
+  constructor(name) {
+    privateData.set(this, { name })
+  }
+
+  getName() {
+    return privateData.get(this).name
+  }
+}
+
+const user = new User('Tom')
+
+console.log(user.getName()) // Tom
+console.log(user.name) // undefined
+```
+
+这里 `privateData` 里用实例对象作为 key。
+
+外部访问不到 WeakMap 中的数据。
+
+当 `user` 不再被引用时，对应的私有数据也可以被回收。
+
+---
+
+**2. 给 DOM 元素绑定额外数据**
+
+```
+const elementData = new WeakMap()
+
+const button = document.querySelector('button')
+
+elementData.set(button, {
+  clicked: 0
+})
+
+button.addEventListener('click', () => {
+  const data = elementData.get(button)
+  data.clicked++
+})
+```
+
+如果这个 DOM 元素从页面移除，并且没有其他引用，WeakMap 不会阻止它被回收。
+
+这可以减少内存泄漏风险。
+
+---
+
+**3. 缓存对象计算结果**
+
+```
+const cache = new WeakMap()
+
+function compute(obj) {
+  if (cache.has(obj)) {
+    return cache.get(obj)
+  }
+
+  const result = expensiveCompute(obj)
+  cache.set(obj, result)
+
+  return result
+}
+```
+
+当 `obj` 不再使用时，缓存也能跟着被回收。
+
+如果用 `Map`，就可能导致缓存越来越大。
+
+---
+
+**Map 适合什么场景**
+
+适合需要明确管理、遍历、统计的键值数据：
+
+```
+const userMap = new Map()
+
+userMap.set('001', { name: 'Tom' })
+userMap.set('002', { name: 'Jerry' })
+
+console.log(userMap.size)
+
+for (const [id, user] of userMap) {
+  console.log(id, user)
+}
+```
+
+比如：
+
+```
+字典数据
+缓存列表
+需要遍历的集合
+需要 size 的集合
+```
+
+---
+
+**WeakMap 适合什么场景**
+
+适合：
+
+```
+key 是对象
+数据依附于对象生命周期
+不需要遍历
+希望避免内存泄漏
+```
+
+比如：
+
+```
+DOM 元素元数据
+对象私有属性
+对象级缓存
+框架内部保存实例关系
+```
+
+Vue 3 响应式系统内部就大量使用 WeakMap 来保存对象和依赖之间的关系，因为响应式目标对象不再使用时，相关依赖关系也应该能被回收。
+
+---
+
+**对比总结**
+
+|对比项|Map|WeakMap|
+|---|---|---|
+|key 类型|任意类型|只能是对象|
+|对 key 的引用|强引用|弱引用|
+|是否阻止 GC|会|不会|
+|是否可遍历|可以|不可以|
+|是否有 size|有|没有|
+|是否有 clear|有|没有|
+|常见用途|普通键值存储、可遍历缓存|私有数据、DOM 元数据、对象缓存|
+|内存泄漏风险|相对更高，需要手动 delete|较低，key 可被自动回收|
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> `Map` 和 `WeakMap` 都是键值对集合。`Map` 的 key 可以是任意类型，并且是强引用，所以只要 key 存在于 Map 中，对应对象就不会被垃圾回收；Map 可以遍历，有 `size`、`keys`、`values`、`entries` 等方法。
+> 
+> `WeakMap` 的 key 只能是对象，并且对 key 是弱引用。如果某个对象除了 WeakMap 之外没有其他引用，那么这个对象可以被垃圾回收，WeakMap 不会阻止它释放。因此 WeakMap 不能遍历，也没有 `size`，因为它的 key 可能随时被回收。
+> 
+> 实际使用上，Map 适合普通键值存储、需要遍历或统计 size 的场景；WeakMap 适合把数据绑定到对象生命周期上，比如对象私有属性、DOM 元素元数据、对象缓存，能够降低内存泄漏风险。
+
+
+# Promise 
+这题可以按四层答：**解决什么问题、有什么特点、常用 API、和传统回调 / XHR 的差异**。
+
+**1. Promise 解决什么问题**
+
+Promise 主要解决的是：**异步流程管理问题**。
+
+早期异步代码经常是回调函数：
+
+```
+ajax('/user', function (user) {
+  ajax('/orders?userId=' + user.id, function (orders) {
+    ajax('/detail?id=' + orders[0].id, function (detail) {
+      console.log(detail)
+    })
+  })
+})
+```
+
+这种代码有几个问题：
+
+- 回调嵌套很深，也叫回调地狱
+- 错误处理分散，每一层都要处理错误
+- 异步任务的状态不清晰
+- 多个异步任务并发、串行组合都不方便
+
+Promise 把一个异步任务抽象成一个对象：
+
+```
+const p = new Promise((resolve, reject) => {
+  // 异步操作
+})
+```
+
+然后用链式调用组织流程：
+
+```
+getUser()
+  .then(user => getOrders(user.id))
+  .then(orders => getDetail(orders[0].id))
+  .then(detail => {
+    console.log(detail)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+```
+
+这样比嵌套回调更清晰。
+
+一句话：
+
+> Promise 用来描述一个未来才会完成的异步结果，让异步代码可以链式调用、统一处理成功和失败，并方便组合多个异步任务。
+
+---
+
+**2. Promise 有哪些特点**
+
+**状态固定**
+
+Promise 有三种状态：
+
+```
+pending：进行中
+fulfilled：成功
+rejected：失败
+```
+
+状态只能从：
+
+```
+pending -> fulfilled
+pending -> rejected
+```
+
+一旦状态确定，就不会再改变。
+
+比如：
+
+```
+const p = new Promise((resolve, reject) => {
+  resolve('success')
+  reject('error')
+})
+
+p.then(res => {
+  console.log(res)
+}).catch(err => {
+  console.log(err)
+})
+```
+
+最终只会输出：
+
+```
+success
+```
+
+因为第一次 `resolve` 后状态已经固定，后面的 `reject` 无效。
+
+---
+
+**then 回调是异步执行的**
+
+即使 Promise 已经成功，`then` 也不会同步执行，而是进入微任务队列。
+
+```
+Promise.resolve().then(() => {
+  console.log(1)
+})
+
+console.log(2)
+```
+
+输出：
+
+```
+2
+1
+```
+
+---
+
+**支持链式调用**
+
+`then` 会返回一个新的 Promise。
+
+```
+Promise.resolve(1)
+  .then(res => res + 1)
+  .then(res => res + 1)
+  .then(res => {
+    console.log(res)
+  })
+```
+
+输出：
+
+```
+3
+```
+
+如果 `then` 返回普通值，会作为下一个 `then` 的成功结果。
+
+如果返回 Promise，会等待这个 Promise 完成。
+
+```
+getUser()
+  .then(user => {
+    return getOrders(user.id)
+  })
+  .then(orders => {
+    console.log(orders)
+  })
+```
+
+---
+
+**错误可以冒泡**
+
+```
+Promise.resolve()
+  .then(() => {
+    throw new Error('error')
+  })
+  .then(() => {
+    console.log('不会执行')
+  })
+  .catch(err => {
+    console.log(err.message)
+  })
+```
+
+错误会一直传递到最近的 `catch`。
+
+---
+
+**3. Promise 常用 API**
+
+**Promise.resolve**
+
+创建一个成功状态的 Promise：
+
+```
+Promise.resolve('ok').then(res => {
+  console.log(res)
+})
+```
+
+---
+
+**Promise.reject**
+
+创建一个失败状态的 Promise：
+
+```
+Promise.reject(new Error('fail')).catch(err => {
+  console.log(err.message)
+})
+```
+
+---
+
+**then**
+
+处理成功结果：
+
+```
+promise.then(res => {
+  console.log(res)
+})
+```
+
+也可以传两个参数：
+
+```
+promise.then(
+  res => {},
+  err => {}
+)
+```
+
+但项目中更常用：
+
+```
+promise.then(res => {}).catch(err => {})
+```
+
+---
+
+**catch**
+
+处理失败：
+
+```
+promise.catch(err => {
+  console.log(err)
+})
+```
+
+等价于：
+
+```
+promise.then(null, err => {})
+```
+
+---
+
+**finally**
+
+不管成功还是失败都会执行：
+
+```
+request()
+  .then(res => {
+    console.log(res)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+  .finally(() => {
+    loading.value = false
+  })
+```
+
+常用于关闭 loading、清理状态。
+
+---
+
+**Promise.all**
+
+多个 Promise 全部成功才成功。
+
+```
+Promise.all([
+  getUser(),
+  getOrders(),
+  getConfig()
+]).then(([user, orders, config]) => {
+  console.log(user, orders, config)
+})
+```
+
+特点：
+
+```
+全部 fulfilled -> 返回所有结果数组
+任意一个 rejected -> 整体立刻 rejected
+```
+
+---
+
+**Promise.allSettled**
+
+等待所有 Promise 都结束，不管成功还是失败。
+
+```
+Promise.allSettled([
+  getUser(),
+  getOrders(),
+  getConfig()
+]).then(results => {
+  console.log(results)
+})
+```
+
+结果类似：
+
+```
+[
+  { status: 'fulfilled', value: user },
+  { status: 'rejected', reason: error },
+  { status: 'fulfilled', value: config }
+]
+```
+
+特点：
+
+```
+不会因为某一个失败就整体失败
+会等所有任务都有结果
+```
+
+---
+
+**Promise.race**
+
+谁先完成，就采用谁的结果，不管成功还是失败。
+
+```
+Promise.race([
+  fetchData(),
+  timeout(3000)
+])
+```
+
+常用于超时控制。
+
+---
+
+**Promise.any**
+
+只要有一个成功，就成功。
+
+```
+Promise.any([
+  requestA(),
+  requestB(),
+  requestC()
+]).then(res => {
+  console.log(res)
+})
+```
+
+特点：
+
+```
+第一个 fulfilled -> 成功
+全部 rejected -> 失败，返回 AggregateError
+```
+
+和 `race` 不同：
+
+```
+race：第一个 settled，不管成功失败
+any：第一个成功
+```
+
+---
+
+**4. all 和 allSettled 的区别**
+
+这是高频。
+
+`Promise.all`：
+
+```
+Promise.all([
+  Promise.resolve(1),
+  Promise.reject('error'),
+  Promise.resolve(3)
+]).then(res => {
+  console.log(res)
+}).catch(err => {
+  console.log(err)
+})
+```
+
+输出：
+
+```
+error
+```
+
+只要有一个失败，整体就失败，不会给你完整结果数组。
+
+适合：
+
+> 多个请求都必须成功，缺一个都不行。
+
+比如：
+
+```
+页面初始化必须同时拿到用户信息、权限、菜单
+```
+
+---
+
+`Promise.allSettled`：
+
+```
+Promise.allSettled([
+  Promise.resolve(1),
+  Promise.reject('error'),
+  Promise.resolve(3)
+]).then(res => {
+  console.log(res)
+})
+```
+
+输出：
+
+```
+[
+  { status: 'fulfilled', value: 1 },
+  { status: 'rejected', reason: 'error' },
+  { status: 'fulfilled', value: 3 }
+]
+```
+
+不会因为某个失败中断。
+
+适合：
+
+> 多个任务互不依赖，希望知道每个任务最终结果。
+
+比如：
+
+```
+批量上传
+批量请求多个模块数据
+多个接口有的失败也不影响整体展示
+```
+
+一句话：
+
+```
+all：全成功才成功，一个失败就失败
+allSettled：不管成功失败，都等所有任务结束并返回每个结果
+```
+
+---
+
+**5. Promise 和 XMLHttpRequest 的使用差异**
+
+这里要先明确：
+
+> Promise 是一种异步编程方案；XMLHttpRequest 是浏览器提供的网络请求 API。它们不是同一层东西。
+
+XMLHttpRequest 用回调事件处理请求：
+
+```
+const xhr = new XMLHttpRequest()
+
+xhr.open('GET', '/api/user')
+
+xhr.onreadystatechange = function () {
+  if (xhr.readyState === 4) {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      console.log(JSON.parse(xhr.responseText))
+    } else {
+      console.log('请求失败')
+    }
+  }
+}
+
+xhr.onerror = function () {
+  console.log('网络错误')
+}
+
+xhr.send()
+```
+
+特点：
+
+```
+基于事件 / 回调
+状态通过 readyState 判断
+代码比较繁琐
+错误处理分散
+不天然支持链式调用
+```
+
+---
+
+Promise 写法一般更清晰。
+
+比如用 `fetch`：
+
+```
+fetch('/api/user')
+  .then(res => res.json())
+  .then(data => {
+    console.log(data)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+```
+
+或者 axios：
+
+```
+axios.get('/api/user')
+  .then(res => {
+    console.log(res.data)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+```
+
+特点：
+
+```
+链式调用
+错误可统一 catch
+更容易组合多个异步任务
+可以配合 async/await
+```
+
+---
+
+**XHR 也可以封装成 Promise**
+
+```
+function request(url) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    xhr.open('GET', url)
+
+    xhr.onload = function () {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText))
+      } else {
+        reject(new Error(xhr.statusText))
+      }
+    }
+
+    xhr.onerror = function () {
+      reject(new Error('Network Error'))
+    }
+
+    xhr.send()
+  })
+}
+
+request('/api/user')
+  .then(data => {
+    console.log(data)
+  })
+  .catch(err => {
+    console.log(err)
+  })
+```
+
+这样就把 XHR 的回调风格包装成 Promise 风格。
+
+---
+
+**Promise 和 XHR 关键区别**
+
+|对比|Promise|XMLHttpRequest|
+|---|---|---|
+|本质|异步编程模型|浏览器网络请求 API|
+|作用|管理异步结果|发送 HTTP 请求|
+|写法|`then/catch/finally`|事件回调、readyState|
+|组合能力|`all/race/allSettled/any`|原生组合不方便|
+|错误处理|可链式 catch|分散在事件回调中|
+|是否能发请求|不能单独发请求|可以发请求|
+|是否能取消|原生 Promise 不能取消|XHR 可以 `abort()`|
+
+注意：
+
+> Promise 本身不会发送请求，发送请求的是 XHR、fetch、axios 这类 API。Promise 只是用来管理异步请求的结果。
+
+---
+
+**6. async/await 和 Promise 的关系**
+
+`async/await` 是 Promise 的语法糖。
+
+```
+async function getData() {
+  try {
+    const res = await fetch('/api/user')
+    const data = await res.json()
+    console.log(data)
+  } catch (err) {
+    console.log(err)
+  }
+}
+```
+
+它看起来像同步代码，但本质还是 Promise。
+
+```
+await xxx
+```
+
+后面的代码会在 Promise 完成后继续执行。
+
+面试可以顺带提：
+
+> async/await 让 Promise 链式调用写起来更像同步流程，但底层仍然是 Promise。
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> Promise 主要解决异步流程管理问题，避免传统回调嵌套过深、错误处理分散、多个异步任务组合困难。Promise 有三种状态：pending、fulfilled、rejected，状态一旦从 pending 变成成功或失败就不可再改变；`then` 回调会进入微任务队列异步执行；`then` 会返回新的 Promise，所以支持链式调用，错误可以通过 `catch` 统一处理。
+> 
+> 常用 API 有 `Promise.resolve`、`Promise.reject`、`then`、`catch`、`finally`、`all`、`allSettled`、`race`、`any`。`Promise.all` 是所有任务都成功才成功，只要一个失败整体就失败；`Promise.allSettled` 会等待所有任务结束，不管成功失败，返回每个任务的状态和值或原因。
+> 
+> Promise 和 XMLHttpRequest 不是同一层概念。XHR 是浏览器提供的网络请求 API，基于事件和回调发送 HTTP 请求；Promise 是异步编程模型，本身不发送请求，只负责管理异步结果。XHR 可以被封装成 Promise，从而获得链式调用、统一错误处理和并发组合能力。
+
+# 原型、继承
+
+> JavaScript 里的对象不是靠“类”天生继承的，而是靠**原型对象**和**原型链**实现属性查找与复用。
+
+---
+
+**1. 原型是什么**
+
+每个函数在创建时，都会有一个 `prototype` 属性。
+
+```
+function Person(name) {
+  this.name = name
+}
+
+console.log(Person.prototype)
+```
+
+`Person.prototype` 是一个对象，通常叫：
+
+```
+构造函数的原型对象
+```
+
+如果你把方法挂到它上面：
+
+```
+Person.prototype.sayHi = function () {
+  console.log('hi, I am ' + this.name)
+}
+```
+
+那么通过 `new Person()` 创建出来的实例，都可以访问这个方法：
+
+```
+const p1 = new Person('Tom')
+const p2 = new Person('Jerry')
+
+p1.sayHi()
+p2.sayHi()
+```
+
+这样做的好处是：
+
+> 方法只在原型上存一份，所有实例共享，节省内存。
+
+---
+
+**2. `__proto__` 是什么**
+
+每个对象内部都有一个指向其原型对象的链接。
+
+平时可以通过：
+
+```
+obj.__proto__
+```
+
+看到。
+
+比如：
+
+```
+function Person(name) {
+  this.name = name
+}
+
+const p = new Person('Tom')
+
+console.log(p.__proto__ === Person.prototype) // true
+```
+
+也就是说：
+
+```
+实例对象的 __proto__ 指向构造函数的 prototype
+```
+
+更标准的写法是：
+
+```
+Object.getPrototypeOf(p) === Person.prototype
+```
+
+面试里要注意：
+
+> `__proto__` 是浏览器实现的访问器属性，标准推荐用 `Object.getPrototypeOf()` 获取原型。
+
+---
+
+**3. constructor 是什么**
+
+默认情况下，原型对象上有一个 `constructor` 属性，指回构造函数本身：
+
+```
+function Person() {}
+
+console.log(Person.prototype.constructor === Person) // true
+```
+
+关系是：
+
+```
+Person.prototype.constructor -> Person
+```
+
+实例可以沿着原型链访问到它：
+
+```
+const p = new Person()
+
+console.log(p.constructor === Person) // true
+```
+
+注意：
+
+```
+p
+  -> p.__proto__
+  -> Person.prototype.constructor
+```
+
+`constructor` 不是实例自己的属性，是从原型上找到的。
+
+---
+
+**4. prototype、**proto**、constructor 三者关系**
+
+这张关系必须会：
+
+```
+function Person(name) {
+  this.name = name
+}
+
+const p = new Person('Tom')
+```
+
+对应关系：
+
+```
+Person.prototype 是构造函数的原型对象
+
+p.__proto__ === Person.prototype
+
+Person.prototype.constructor === Person
+
+p.constructor === Person
+```
+
+可以画成：
+
+```
+Person 函数
+   |
+   | prototype
+   ↓
+Person.prototype
+   |
+   | constructor
+   ↓
+Person 函数
+
+p 实例
+   |
+   | __proto__
+   ↓
+Person.prototype
+```
+
+---
+
+**5. 原型链是什么**
+
+当你访问一个对象属性时：
+
+```
+p.sayHi
+```
+
+JS 查找顺序是：
+
+1. 先看 `p` 自己有没有 `sayHi`
+2. 如果没有，就去 `p.__proto__` 上找
+3. 还没有，就继续去 `p.__proto__.__proto__` 上找
+4. 一直找到 `null`
+
+这条查找链路就叫：
+
+```
+原型链
+```
+
+例子：
+
+```
+function Person(name) {
+  this.name = name
+}
+
+Person.prototype.sayHi = function () {
+  console.log('hi')
+}
+
+const p = new Person('Tom')
+
+p.sayHi()
+```
+
+`p` 自己没有 `sayHi`，于是去：
+
+```
+p.__proto__ -> Person.prototype
+```
+
+找到了。
+
+---
+
+**6. 原型链的终点**
+
+普通对象的原型链：
+
+```
+const obj = {}
+```
+
+关系：
+
+```
+obj.__proto__ === Object.prototype
+Object.prototype.__proto__ === null
+```
+
+也就是：
+
+```
+obj -> Object.prototype -> null
+```
+
+数组：
+
+```
+const arr = []
+```
+
+关系：
+
+```
+arr -> Array.prototype -> Object.prototype -> null
+```
+
+函数：
+
+```
+function fn() {}
+```
+
+关系：
+
+```
+fn -> Function.prototype -> Object.prototype -> null
+```
+
+---
+
+**7. new 做了什么**
+
+这是高频。
+
+```
+const p = new Person('Tom')
+```
+
+`new` 大概做了四件事：
+
+```
+function myNew(Constructor, ...args) {
+  const obj = {}
+
+  Object.setPrototypeOf(obj, Constructor.prototype)
+
+  const result = Constructor.apply(obj, args)
+
+  return result !== null && typeof result === 'object'
+    ? result
+    : obj
+}
+```
+
+更完整一点还要处理函数返回：
+
+```
+function myNew(Constructor, ...args) {
+  const obj = Object.create(Constructor.prototype)
+
+  const result = Constructor.apply(obj, args)
+
+  const isObject = result !== null && typeof result === 'object'
+  const isFunction = typeof result === 'function'
+
+  return isObject || isFunction ? result : obj
+}
+```
+
+`new` 的流程：
+
+1. 创建一个新对象
+2. 把新对象的原型指向构造函数的 `prototype`
+3. 让构造函数里的 `this` 指向新对象
+4. 如果构造函数返回对象，则返回这个对象；否则返回新对象
+
+---
+
+**8. instanceof 原理**
+
+```
+p instanceof Person
+```
+
+判断的是：
+
+> `Person.prototype` 是否出现在 `p` 的原型链上。
+
+比如：
+
+```
+function Person() {}
+
+const p = new Person()
+
+console.log(p instanceof Person) // true
+console.log(p instanceof Object) // true
+```
+
+因为：
+
+```
+p -> Person.prototype -> Object.prototype -> null
+```
+
+实现：
+
+```
+function myInstanceof(obj, Constructor) {
+  let proto = Object.getPrototypeOf(obj)
+  const prototype = Constructor.prototype
+
+  while (proto) {
+    if (proto === prototype) {
+      return true
+    }
+
+    proto = Object.getPrototypeOf(proto)
+  }
+
+  return false
+}
+```
+
+---
+
+**9. 继承是什么**
+
+继承的核心是：
+
+> 子对象能复用父对象的属性和方法。
+
+JS 里继承主要依赖原型链。
+
+下面按历史方式讲。
+
+---
+
+**10. 原型链继承**
+
+```
+function Parent() {
+  this.colors = ['red', 'blue']
+}
+
+Parent.prototype.say = function () {
+  console.log('parent')
+}
+
+function Child() {}
+
+Child.prototype = new Parent()
+
+const c1 = new Child()
+const c2 = new Child()
+
+c1.colors.push('green')
+
+console.log(c2.colors) // ['red', 'blue', 'green']
+```
+
+问题：
+
+```
+引用类型属性被所有实例共享
+创建子类实例时不能方便给父构造函数传参
+```
+
+因为 `colors` 在 `Child.prototype` 上，被所有实例共享。
+
+---
+
+**11. 构造函数继承**
+
+```
+ 
+const c1 = new Child('Tom')
+const c2 = new Child('Jerry')
+
+c1.colors.push('green')
+
+console.log(c1.colors) // ['red', 'blue', 'green']
+console.log(c2.colors) // ['red', 'blue']
+```
+
+优点：
+
+```
+解决引用类型共享问题
+可以给父构造函数传参
+```
+
+缺点：
+
+```
+只能继承父构造函数里的实例属性
+不能继承父原型上的方法
+```
+
+比如：
+
+```
+Parent.prototype.say = function () {}
+```
+
+`Child` 实例访问不到。
+
+---
+
+**12. 组合继承**
+
+组合继承 = 原型链继承 + 构造函数继承。
+
+```
+function Parent(name) {
+  this.name = name
+  this.colors = ['red', 'blue']
+}
+
+Parent.prototype.say = function () {
+  console.log(this.name)
+}
+
+function Child(name, age) {
+  Parent.call(this, name)
+  this.age = age
+}
+
+Child.prototype = new Parent()
+Child.prototype.constructor = Child
+
+const c1 = new Child('Tom', 18)
+const c2 = new Child('Jerry', 20)
+```
+
+优点：
+
+```
+实例属性独立
+原型方法共享
+```
+
+缺点：
+
+```
+Parent 构造函数会被调用两次
+```
+
+一次是：
+
+```
+Child.prototype = new Parent()
+```
+
+一次是：
+
+```
+Parent.call(this, name)
+```
+
+---
+
+**13. 寄生组合继承**
+
+这是 ES5 里比较理想的继承方式。
+
+```
+function Parent(name) {
+  this.name = name
+  this.colors = ['red', 'blue']
+}
+
+Parent.prototype.say = function () {
+  console.log(this.name)
+}
+
+function Child(name, age) {
+  Parent.call(this, name)
+  this.age = age
+}
+
+Child.prototype = Object.create(Parent.prototype)
+Child.prototype.constructor = Child
+
+const c = new Child('Tom', 18)
+
+c.say()
+```
+
+关键是：
+
+```
+Child.prototype = Object.create(Parent.prototype)
+```
+
+这一步创建了一个新对象，它的原型指向 `Parent.prototype`。
+
+避免了：
+
+```
+Child.prototype = new Parent()
+```
+
+所以不会多调用一次父构造函数。
+
+这是最推荐理解的继承方式。
+
+---
+
+**14. class 继承**
+
+ES6 的 `class` 本质上是原型继承的语法糖。
+
+```
+class Parent {
+  constructor(name) {
+    this.name = name
+  }
+
+  say() {
+    console.log(this.name)
+  }
+}
+
+class Child extends Parent {
+  constructor(name, age) {
+    super(name)
+    this.age = age
+  }
+}
+
+const c = new Child('Tom', 18)
+c.say()
+```
+
+背后大致相当于：
+
+```
+Child.prototype 的原型指向 Parent.prototype
+Child 构造函数内部通过 super 调用 Parent 构造函数
+```
+
+关系：
+
+```
+Object.getPrototypeOf(Child.prototype) === Parent.prototype
+```
+
+另外：
+
+```
+Object.getPrototypeOf(Child) === Parent
+```
+
+这表示静态方法也能继承。
+
+---
+
+**15. class 里的 super**
+
+在子类构造函数里：
+
+```
+class Child extends Parent {
+  constructor(name) {
+    super(name)
+    this.age = 18
+  }
+}
+```
+
+必须先调用：
+
+```
+super()
+```
+
+才能使用：
+
+```
+this
+```
+
+因为子类实例的 `this` 是由父类构造函数初始化的。
+
+如果不写：
+
+```
+super()
+```
+
+会报错。
+
+---
+
+**16. Object.create 是什么**
+
+```
+const proto = {
+  say() {
+    console.log('hi')
+  }
+}
+
+const obj = Object.create(proto)
+
+obj.say()
+```
+
+`Object.create(proto)` 会创建一个新对象，并把这个新对象的原型指向 `proto`。
+
+也就是：
+
+```
+Object.getPrototypeOf(obj) === proto
+```
+
+它常用于创建纯原型继承关系。
+
+---
+
+**17. 原型上方法和实例上方法区别**
+
+```
+function Person(name) {
+  this.name = name
+
+  this.say = function () {
+    console.log(this.name)
+  }
+}
+```
+
+这种写法每创建一个实例，都会创建一份 `say` 方法。
+
+```
+const p1 = new Person('Tom')
+const p2 = new Person('Jerry')
+
+console.log(p1.say === p2.say) // false
+```
+
+如果写到原型上：
+
+```
+function Person(name) {
+  this.name = name
+}
+
+Person.prototype.say = function () {
+  console.log(this.name)
+}
+
+const p1 = new Person('Tom')
+const p2 = new Person('Jerry')
+
+console.log(p1.say === p2.say) // true
+```
+
+所有实例共享同一个方法，更节省内存。
+
+---
+
+**18. hasOwnProperty 和 in**
+
+```
+const obj = {
+  name: 'Tom'
+}
+
+console.log('name' in obj) // true
+console.log(obj.hasOwnProperty('name')) // true
+
+console.log('toString' in obj) // true
+console.log(obj.hasOwnProperty('toString')) // false
+```
+
+区别：
+
+```
+in：自己和原型链上有都返回 true
+hasOwnProperty：只有对象自身属性才返回 true
+```
+
+更推荐安全写法：
+
+```
+Object.prototype.hasOwnProperty.call(obj, 'name')
+```
+
+或者新方法：
+
+```
+Object.hasOwn(obj, 'name')
+```
+
+---
+
+**19. 面试常见问题总结**
+
+**原型链是什么？**
+
+> 当访问对象属性时，JS 会先在对象自身查找，如果找不到，就沿着对象的原型继续查找，直到 `null`，这条查找链路就是原型链。
+
+**prototype 和 `__proto__` 区别？**
+
+> `prototype` 是函数才有的属性，指向构造函数的原型对象；`__proto__` 是对象内部指向其原型的链接。实例的 `__proto__` 指向构造函数的 `prototype`。
+
+**new 做了什么？**
+
+> 创建新对象，把新对象原型指向构造函数的 prototype，执行构造函数并绑定 this，如果构造函数返回对象则返回该对象，否则返回新对象。
+
+**继承怎么实现？**
+
+> ES5 推荐寄生组合继承：子构造函数内部用 `Parent.call(this)` 继承实例属性，再用 `Object.create(Parent.prototype)` 让子类原型继承父类原型。ES6 可以用 `class extends`，本质仍然是基于原型链的语法糖。
+
+---
+
+**面试版总回答**
+
+可以这样说：
+
+> JavaScript 的继承主要基于原型链。每个函数都有 `prototype` 属性，指向它的原型对象；通过 `new` 创建的实例对象内部有一个原型链接，通常通过 `__proto__` 访问，它指向构造函数的 `prototype`。当访问实例属性时，会先从实例自身查找，找不到就沿着 `__proto__` 指向的原型对象继续查找，直到 `null`，这条链就是原型链。
+> 
+> 原型的作用是实现属性和方法共享，比如把方法挂在 `Person.prototype` 上，所有 `Person` 实例都可以访问同一个方法，避免每个实例都创建一份函数。`new` 的过程可以理解为创建一个新对象，把它的原型指向构造函数的 `prototype`，然后执行构造函数并绑定 this，最后返回这个对象。
+> 
+> JS 继承常见方式有原型链继承、构造函数继承、组合继承、寄生组合继承和 ES6 class 继承。原型链继承的问题是引用类型属性会被共享；构造函数继承的问题是不能继承原型方法；组合继承能同时继承实例属性和原型方法，但会调用两次父构造函数；寄生组合继承通过 `Parent.call(this)` 和 `Object.create(Parent.prototype)` 解决这些问题。ES6 的 `class extends` 本质上也是原型链继承的语法糖。
+
+
+# 闭包
+这个题可以按三句话理解：
+
+```
+函数可以访问自己定义时所在作用域的变量
+即使这个函数在外部执行，仍然能访问那些变量
+这些变量不会被立即销毁
+```
+
+---
+
+**1. 什么是闭包**
+
+先看一个例子：
+
+```
+function outer() {
+  const name = 'Tom'
+
+  function inner() {
+    console.log(name)
+  }
+
+  return inner
+}
+
+const fn = outer()
+
+fn() // Tom
+```
+
+`outer` 执行完后，按理说它的局部变量 `name` 应该销毁。
+
+但 `inner` 仍然能访问 `name`。
+
+因为 `inner` 在定义时记住了它所在的词法作用域。
+
+这就是闭包。
+
+一句话：
+
+> 闭包就是函数和它能够访问的外部词法环境的组合。
+
+更口语一点：
+
+> 内部函数引用了外部函数的变量，并且这个内部函数被外部持有，就形成了闭包。
+
+---
+
+**2. 为什么 outer 执行完，name 还在**
+
+因为：
+
+```
+const fn = outer()
+```
+
+`fn` 引用了 `inner` 函数。
+
+而 `inner` 函数内部还引用了 `outer` 作用域里的 `name`。
+
+所以 JS 引擎不能把 `name` 回收。
+
+引用关系大概是：
+
+```
+fn -> inner 函数
+inner 函数 -> outer 的词法环境
+outer 的词法环境 -> name
+```
+
+只要 `fn` 还存在，`name` 就还可以被访问。
+
+---
+
+**3. 闭包和作用域的关系**
+
+JS 是词法作用域，也叫静态作用域。
+
+函数能访问哪些变量，取决于它**定义的位置**，不是调用的位置。
+
+看这个：
+
+```
+const name = 'global'
+
+function outer() {
+  const name = 'outer'
+
+  return function inner() {
+    console.log(name)
+  }
+}
+
+const fn = outer()
+
+function run() {
+  const name = 'run'
+  fn()
+}
+
+run()
+```
+
+输出：
+
+```
+outer
+```
+
+因为 `inner` 是在 `outer` 里面定义的，所以它记住的是 `outer` 里的 `name`，不是调用它的 `run` 里的 `name`。
+
+---
+
+**4. 闭包有什么用**
+
+**1. 保存私有变量**
+
+```
+function createCounter() {
+  let count = 0
+
+  return {
+    increment() {
+      count++
+      return count
+    },
+    decrement() {
+      count--
+      return count
+    },
+    getCount() {
+      return count
+    }
+  }
+}
+
+const counter = createCounter()
+
+console.log(counter.increment()) // 1
+console.log(counter.increment()) // 2
+console.log(counter.getCount())  // 2
+```
+
+外部不能直接访问：
+
+```
+counter.count // undefined
+```
+
+但可以通过暴露的方法间接操作 `count`。
+
+这就是用闭包实现私有状态。
+
+---
+
+**2. 函数柯里化**
+
+```
+function add(a) {
+  return function (b) {
+    return a + b
+  }
+}
+
+const add10 = add(10)
+
+console.log(add10(5)) // 15
+```
+
+`add10` 记住了 `a = 10`。
+
+所以后面传 `5` 时可以得到 `15`。
+
+---
+
+**3. 防抖 debounce**
+
+```
+function debounce(fn, delay) {
+  let timer = null
+
+  return function (...args) {
+    clearTimeout(timer)
+
+    timer = setTimeout(() => {
+      fn.apply(this, args)
+    }, delay)
+  }
+}
+
+const handleInput = debounce(function () {
+  console.log('search')
+}, 300)
+```
+
+这里 `timer` 是闭包变量。
+
+每次调用 `handleInput`，都能访问同一个 `timer`。
+
+这就是闭包在实际项目里的典型使用。
+
+---
+
+**4. 节流 throttle**
+
+```
+function throttle(fn, delay) {
+  let lastTime = 0
+
+  return function (...args) {
+    const now = Date.now()
+
+    if (now - lastTime >= delay) {
+      lastTime = now
+      fn.apply(this, args)
+    }
+  }
+}
+```
+
+`lastTime` 被返回的函数一直记住，用来判断是否到了执行时间。
+
+---
+
+**5. 模块化封装**
+
+早期没有 ES Module 时，会用立即执行函数 IIFE 创建私有作用域：
+
+```
+const module = (function () {
+  const privateName = 'Tom'
+
+  function getName() {
+    return privateName
+  }
+
+  return {
+    getName
+  }
+})()
+
+console.log(module.getName()) // Tom
+console.log(module.privateName) // undefined
+```
+
+`privateName` 对外不可见，但 `getName` 可以访问。
+
+---
+
+**5. 闭包可能产生的问题**
+
+**1. 内存占用增加**
+
+闭包会让外部函数的变量不被释放。
+
+比如：
+
+```
+function createFn() {
+  const bigData = new Array(1000000).fill('*')
+
+  return function () {
+    console.log(bigData.length)
+  }
+}
+
+const fn = createFn()
+```
+
+只要 `fn` 还存在，`bigData` 就不能回收。
+
+如果 `bigData` 很大，就会占用内存。
+
+---
+
+**2. 内存泄漏**
+
+如果闭包被长期保存，比如挂到全局、定时器、事件监听中，就可能导致相关变量一直无法释放。
+
+```
+function bindEvent() {
+  const data = new Array(1000000).fill('*')
+
+  window.addEventListener('resize', function () {
+    console.log(data.length)
+  })
+}
+
+bindEvent()
+```
+
+这里 resize 回调引用了 `data`。
+
+而这个回调被 `window` 持有。
+
+所以 `data` 可能一直不能释放。
+
+解决：
+
+```
+function bindEvent() {
+  const data = new Array(1000000).fill('*')
+
+  function handler() {
+    console.log(data.length)
+  }
+
+  window.addEventListener('resize', handler)
+
+  return function cleanup() {
+    window.removeEventListener('resize', handler)
+  }
+}
+
+const cleanup = bindEvent()
+
+cleanup()
+```
+
+Vue / React 组件里也一样，卸载时要清理事件监听、定时器、订阅等。
+
+---
+
+**3. 循环中变量捕获问题**
+
+经典题：
+
+```
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => {
+    console.log(i)
+  }, 0)
+}
+```
+
+输出：
+
+```
+3
+3
+3
+```
+
+原因：
+
+```
+var 是函数作用域
+三个回调共享同一个 i
+setTimeout 执行时，循环已经结束，i 变成 3
+```
+
+解决方式 1：用 `let`
+
+```
+for (let i = 0; i < 3; i++) {
+  setTimeout(() => {
+    console.log(i)
+  }, 0)
+}
+```
+
+输出：
+
+```
+0
+1
+2
+```
+
+因为 `let` 有块级作用域，每轮循环会创建新的绑定。
+
+解决方式 2：IIFE
+
+```
+for (var i = 0; i < 3; i++) {
+  ;(function (j) {
+    setTimeout(() => {
+      console.log(j)
+    }, 0)
+  })(i)
+}
+```
+
+---
+
+**6. 闭包不是“只有 return 函数”才有**
+
+很多人误以为只有返回函数才叫闭包。
+
+其实只要函数访问了外部作用域变量，就有闭包特征。
+
+比如事件回调：
+
+```
+function init() {
+  const name = 'Tom'
+
+  button.addEventListener('click', function () {
+    console.log(name)
+  })
+}
+```
+
+这个 click 回调也形成了闭包。
+
+因为它访问了 `init` 里的 `name`，而回调可能在 `init` 执行完后才执行。
+
+---
+
+**7. 闭包和 this 没有必然关系**
+
+闭包是作用域概念。
+
+`this` 是函数调用方式决定的。
+
+比如：
+
+```
+const obj = {
+  name: 'obj',
+  fn() {
+    const age = 18
+
+    return function () {
+      console.log(age)
+      console.log(this.name)
+    }
+  }
+}
+```
+
+这里返回的函数闭包访问 `age`，但 `this.name` 取决于它怎么被调用。
+
+所以面试里可以强调：
+
+> 闭包由词法作用域决定，this 由调用方式决定，两者不是一回事。
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> 闭包是函数和其词法作用域的组合。一个函数在定义时会记住它所在的作用域，即使这个函数在外部被调用，也能访问定义时外层作用域中的变量。常见形式是外部函数返回内部函数，内部函数引用了外部函数的变量，这些变量就不会在外部函数执行结束后立即销毁。
+> 
+> 闭包常用于保存私有变量、封装模块、函数柯里化、防抖节流等。比如防抖函数中，返回的函数通过闭包一直保存同一个 timer，从而实现多次触发只执行最后一次。
+> 
+> 闭包的问题是可能导致内存占用增加。如果闭包长期持有大对象，或者被全局变量、定时器、事件监听引用，就可能造成内存泄漏。实际开发中要注意在组件销毁时清除定时器、移除事件监听、取消订阅，不再需要的引用及时释放。另外，循环里用 `var` 配合异步回调会因为共享同一个变量产生经典问题，可以用 `let` 或 IIFE 解决。
+
+
+
+# JavaScript 的垃圾回收
+这题可以按三层讲：
+
+```
+为什么需要垃圾回收
+垃圾回收怎么判断“没用了”
+平时怎么避免内存泄漏
+```
+
+---
+
+**1. 什么是内存管理**
+
+程序运行时会不断创建数据：
+
+```
+const user = {
+  name: 'Tom',
+  age: 18
+}
+
+const list = new Array(10000).fill(0)
+```
+
+这些对象、数组、函数都需要占用内存。
+
+内存管理大致包括三步：
+
+```
+分配内存
+使用内存
+释放内存
+```
+
+在 C/C++ 里，释放内存很多时候要开发者手动做。
+
+但 JavaScript 里，内存主要由引擎自动管理，也就是垃圾回收 GC。
+
+---
+
+**2. 什么是垃圾回收**
+
+垃圾回收就是：
+
+> JS 引擎自动找出那些已经无法再被使用的数据，并释放它们占用的内存。
+
+比如：
+
+```
+let obj = {
+  name: 'Tom'
+}
+
+obj = null
+```
+
+原来的对象 `{ name: 'Tom' }` 如果没有其他引用了，就可以被回收。
+
+---
+
+**3. 垃圾回收怎么判断对象没用了**
+
+主要有两种思路：
+
+```
+引用计数
+标记清除
+```
+
+现代 JS 引擎主要使用：
+
+```
+标记清除
+```
+
+---
+
+**4. 引用计数**
+
+引用计数的思路是：
+
+> 看一个对象被引用了几次，如果引用次数为 0，就回收。
+
+例如：
+
+```
+let a = {
+  name: 'Tom'
+}
+
+let b = a
+```
+
+此时对象被 `a` 和 `b` 引用。
+
+```
+a = null
+```
+
+对象还不能回收，因为 `b` 还引用着它。
+
+```
+b = null
+```
+
+引用次数变成 0，可以回收。
+
+---
+
+**引用计数的问题：循环引用**
+
+```
+function fn() {
+  const obj1 = {}
+  const obj2 = {}
+
+  obj1.target = obj2
+  obj2.target = obj1
+}
+
+fn()
+```
+
+`fn` 执行结束后，外部已经访问不到 `obj1` 和 `obj2`。
+
+但它们互相引用：
+
+```
+obj1 -> obj2
+obj2 -> obj1
+```
+
+如果只看引用次数，它们引用次数都不是 0，就无法回收。
+
+这就是引用计数的缺陷。
+
+---
+
+**5. 标记清除**
+
+现代 JS 引擎主要用标记清除。
+
+它的思路是：
+
+> 从一组根对象出发，能访问到的对象就是还在使用；访问不到的对象就是垃圾，可以回收。
+
+根对象包括：
+
+```
+全局对象 window / global
+当前调用栈中的变量
+闭包中仍被引用的变量
+DOM 引用等
+```
+
+过程：
+
+```
+1. 从根对象出发
+2. 沿着引用关系遍历所有能访问到的对象
+3. 标记这些对象为“可达”
+4. 没被标记的对象就是“不可达”
+5. 回收不可达对象
+```
+
+比如：
+
+```
+function fn() {
+  const obj = {
+    name: 'Tom'
+  }
+}
+
+fn()
+```
+
+`fn` 执行完后，`obj` 不再能从根对象访问到。
+
+所以 `{ name: 'Tom' }` 是不可达的，可以被回收。
+
+---
+
+**循环引用在标记清除下可以回收**
+
+```
+function fn() {
+  const obj1 = {}
+  const obj2 = {}
+
+  obj1.target = obj2
+  obj2.target = obj1
+}
+
+fn()
+```
+
+虽然 `obj1` 和 `obj2` 互相引用，但函数执行完后，外部访问不到它们。
+
+从根对象出发无法到达它们。
+
+所以它们会被判定为不可达，可以回收。
+
+---
+
+**6. V8 的分代回收**
+
+面试如果想答得更深入，可以提 V8 的分代回收。
+
+V8 会把堆内存大致分成：
+
+```
+新生代
+老生代
+```
+
+**新生代**
+
+存放生命周期短的对象。
+
+比如函数里临时创建的小对象。
+
+```
+function sum() {
+  const temp = { a: 1, b: 2 }
+}
+```
+
+这类对象通常很快就没用了。
+
+新生代回收频繁，但每次回收区域较小。
+
+---
+
+**老生代**
+
+存放生命周期较长的对象。
+
+比如全局缓存、大型对象、经过多次 GC 仍然存活的对象。
+
+```
+const cache = new Map()
+```
+
+如果一个对象在新生代里经历多次回收仍然存活，可能会被晋升到老生代。
+
+---
+
+**为什么分代**
+
+因为大多数对象都是“朝生夕死”的。
+
+比如函数调用中创建的临时对象，很快就可以回收。
+
+所以把对象分代后：
+
+```
+新对象频繁、小范围回收
+老对象低频、大范围回收
+```
+
+可以提高 GC 效率。
+
+---
+
+**7. 常见内存泄漏场景**
+
+垃圾回收不是万能的。
+
+如果某个对象仍然可以从根对象访问到，GC 就不会回收它。
+
+但这个对象业务上已经不用了，这就是内存泄漏。
+
+---
+
+**1. 全局变量**
+
+```
+function fn() {
+  data = new Array(1000000).fill('*')
+}
+
+fn()
+```
+
+这里没有写 `let/const/var`，`data` 可能变成全局变量。
+
+全局对象一直存在，所以 `data` 不会被回收。
+
+正确：
+
+```
+function fn() {
+  const data = new Array(1000000).fill('*')
+}
+```
+
+---
+
+**2. 定时器未清除**
+
+```
+const timer = setInterval(() => {
+  console.log('running')
+}, 1000)
+```
+
+如果组件销毁后没有清除：
+
+```
+clearInterval(timer)
+```
+
+定时器回调还在，里面引用的数据也可能一直不能释放。
+
+Vue：
+
+```
+onUnmounted(() => {
+  clearInterval(timer)
+})
+```
+
+React：
+
+```
+useEffect(() => {
+  const timer = setInterval(() => {}, 1000)
+
+  return () => {
+    clearInterval(timer)
+  }
+}, [])
+```
+
+---
+
+**3. 事件监听未移除**
+
+```
+function handler() {
+  console.log('scroll')
+}
+
+window.addEventListener('scroll', handler)
+```
+
+组件销毁时要：
+
+```
+window.removeEventListener('scroll', handler)
+```
+
+否则 `window` 一直引用着 `handler`，`handler` 又可能闭包引用组件数据，导致无法释放。
+
+---
+
+**4. 闭包使用不当**
+
+闭包本身不是问题，但闭包会让外层变量继续存在。
+
+```
+function createFn() {
+  const bigData = new Array(1000000).fill('*')
+
+  return function () {
+    console.log(bigData.length)
+  }
+}
+
+const fn = createFn()
+```
+
+只要 `fn` 还存在，`bigData` 就不会被回收。
+
+如果确实不再需要：
+
+```
+fn = null
+```
+
+当然这里 `fn` 如果用 `const` 就不能重新赋值，实际要根据场景释放引用。
+
+---
+
+**5. DOM 引用未释放**
+
+```
+let el = document.querySelector('#box')
+
+document.body.removeChild(el)
+```
+
+虽然 DOM 从页面移除了，但 JS 变量 `el` 还引用着它。
+
+所以这个 DOM 节点还不能回收。
+
+如果不用了：
+
+```
+el = null
+```
+
+---
+
+**6. Map 缓存没有清理**
+
+```
+const cache = new Map()
+
+function save(obj) {
+  cache.set(obj, 'some data')
+}
+```
+
+`Map` 对 key 是强引用。
+
+如果一直往里面塞对象，又不删除，就会导致缓存越来越大。
+
+可以手动清理：
+
+```
+cache.delete(obj)
+cache.clear()
+```
+
+如果 key 是对象，并且希望对象不用后缓存自动释放，可以考虑：
+
+```
+const cache = new WeakMap()
+```
+
+---
+
+**8. WeakMap / WeakSet 和内存管理**
+
+`WeakMap` 的 key 是弱引用。
+
+```
+const weakMap = new WeakMap()
+
+let obj = {}
+
+weakMap.set(obj, 'data')
+
+obj = null
+```
+
+如果这个对象除了 WeakMap 之外没有其他引用，它可以被垃圾回收。
+
+所以 WeakMap 适合：
+
+```
+对象私有数据
+DOM 元素元数据
+对象缓存
+```
+
+可以降低内存泄漏风险。
+
+---
+
+**9. 如何排查内存泄漏**
+
+Chrome DevTools 常用：
+
+```
+Memory 面板
+Performance 面板
+Heap Snapshot
+Allocation instrumentation
+```
+
+常见排查方式：
+
+1. 打开 Memory
+2. 拍一张 Heap Snapshot
+3. 执行可能泄漏的操作，比如反复进入/离开页面
+4. 再拍一张 Snapshot
+5. 对比对象数量是否持续增长
+6. 查看 Retainers，找是谁引用着它
+
+如果某些组件实例、DOM 节点、数组一直增长不下降，就要排查引用链。
+
+---
+
+**10. 平时怎么避免内存泄漏**
+
+常见做法：
+
+```
+避免意外全局变量
+组件销毁时清除定时器
+组件销毁时移除事件监听
+不用的 DOM 引用置空
+缓存设置上限或定期清理
+对象缓存可用 WeakMap
+避免闭包长期引用大对象
+页面切换时清理订阅、socket、观察器
+```
+
+比如：
+
+```
+const observer = new MutationObserver(callback)
+
+observer.observe(el, {
+  childList: true
+})
+
+onUnmounted(() => {
+  observer.disconnect()
+})
+```
+
+WebSocket 也要关闭：
+
+```
+socket.close()
+```
+
+---
+
+**面试版回答**
+
+可以这样说：
+
+> JavaScript 的内存管理主要包括内存分配、使用和释放。JS 引擎会通过垃圾回收机制自动释放不再使用的对象。早期有引用计数的思路，也就是看对象被引用的次数，引用为 0 就回收，但它无法很好处理循环引用。现代 JS 引擎主要使用标记清除，从全局对象、调用栈、闭包等根对象出发，能访问到的对象视为可达，访问不到的对象就是垃圾，可以被回收。
+> 
+> 以 V8 为例，还会使用分代回收，把对象分为新生代和老生代。新生代存放生命周期短的对象，回收更频繁；老生代存放生命周期较长的对象，回收频率较低。这样是因为大多数对象生命周期都很短，分代可以提升回收效率。
+> 
+> 实际开发中，内存泄漏通常不是 GC 不工作，而是对象仍然被引用着，比如意外全局变量、未清除的定时器、未移除的事件监听、闭包长期引用大对象、DOM 删除后仍被 JS 引用、Map 缓存不清理等。避免方式是在组件销毁时清理定时器、事件、订阅、观察器和 WebSocket，不再使用的引用及时释放，缓存设置上限，必要时使用 WeakMap 让对象生命周期结束后可以被自动回收。
+
 # 虚拟dom
 **虚拟 DOM 是什么**
 
@@ -9430,5 +13900,2434 @@ position + z-index
 > `opacity` 会让元素整体透明，包括子元素，并且小于 1 时会创建层叠上下文。如果只想背景透明，应该用 `rgba`。`transform` 可以做位移、缩放、旋转，它不会影响普通流布局，但会创建层叠上下文，也可能影响内部 fixed 元素的定位。动画里常用 `transform` 和 `opacity`，因为它们通常性能更好。
 > 
 > 伪类表示元素的状态或结构位置，比如 `:hover`、`:focus`、`:first-child`；伪元素表示元素的一部分或创建额外的虚拟元素，比如 `::before`、`::after`、`::first-line`。伪元素通常需要 `content` 才能显示。
+> 
 
-16:48
+## 响应式与适配
+
+这一块面试要抓住一个主线：
+
+> 不同设备屏幕大小、像素密度、使用场景都不同，CSS 需要让页面在不同环境下保持可读、可用、布局合理。
+
+我们按这几个点讲：
+
+```
+px
+em
+rem
+vw / vh
+媒体查询
+移动端适配
+1px 问题
+```
+
+---
+
+**一、先理解 px**
+
+`px` 是 CSS 像素，不一定等于设备物理像素。
+
+比如 iPhone 的 DPR 是 2 或 3。
+
+```
+1 CSS px 可能对应 2x2 或 3x3 个物理像素
+```
+
+所以：
+
+```
+.box {
+  width: 100px;
+}
+```
+
+这里的 `100px` 是 CSS 像素，不是屏幕硬件的 100 个发光点。
+
+---
+
+**二、DPR 是什么**
+
+DPR 全称：
+
+```
+Device Pixel Ratio
+```
+
+设备像素比。
+
+公式：
+
+```
+DPR = 物理像素 / CSS 像素
+```
+
+比如某手机：
+
+```
+CSS 视口宽度：375px
+物理像素宽度：750px
+```
+
+那么：
+
+```
+DPR = 750 / 375 = 2
+```
+
+这就是为什么设计稿经常是 750px，而 CSS 写 375px。
+
+---
+
+**三、viewport 是什么**
+
+移动端必须写：
+
+```
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+```
+
+含义：
+
+```
+layout viewport 宽度等于设备宽度
+初始缩放比例为 1
+```
+
+如果不写，移动端浏览器可能会用一个默认的宽视口，比如 980px，然后把页面缩小显示，导致页面看起来很小。
+
+所以移动端适配第一步就是 viewport。
+
+---
+
+**四、em**
+
+`em` 是相对于当前元素或父元素字体大小的单位。
+
+看例子：
+
+```
+.parent {
+  font-size: 20px;
+}
+
+.child {
+  width: 10em;
+}
+```
+
+如果 `.child` 自己没有设置 `font-size`，继承父元素的 `20px`。
+
+那么：
+
+```
+10em = 10 * 20px = 200px
+```
+
+如果 `.child` 自己设置：
+
+```
+.child {
+  font-size: 16px;
+  width: 10em;
+}
+```
+
+那么：
+
+```
+10em = 10 * 16px = 160px
+```
+
+所以 `em` 的问题是：
+
+> 它会受到当前元素 font-size 影响，嵌套多了容易计算混乱。
+
+---
+
+**em 常用场景**
+
+`em` 适合做和文字大小相关的局部尺寸。
+
+比如按钮：
+
+```
+.button {
+  font-size: 16px;
+  padding: 0.5em 1em;
+}
+```
+
+如果按钮字体变大，padding 也跟着变大，比例保持自然。
+
+---
+
+**五、rem**
+
+`rem` 全称：
+
+```
+root em
+```
+
+它相对于根元素 `html` 的字体大小。
+
+```
+html {
+  font-size: 16px;
+}
+
+.box {
+  width: 10rem;
+}
+```
+
+那么：
+
+```
+10rem = 160px
+```
+
+不管嵌套多深，`rem` 都只看：
+
+```
+html {
+  font-size: ?
+}
+```
+
+所以 `rem` 比 `em` 更适合做全局适配。
+
+---
+
+**rem 移动端适配思路**
+
+如果设计稿是 750px，常见方案是：
+
+```
+function setRem() {
+  const width = document.documentElement.clientWidth
+  document.documentElement.style.fontSize = width / 10 + 'px'
+}
+
+setRem()
+window.addEventListener('resize', setRem)
+```
+
+如果屏幕宽度是 375px：
+
+```
+html font-size = 375 / 10 = 37.5px
+```
+
+那么设计稿里的 75px，可以写成：
+
+```
+75 / 75 = 1rem
+```
+
+不同团队换算规则不同，但核心是：
+
+> 根据屏幕宽度动态设置根字号，然后页面尺寸用 rem 表示，实现等比例缩放。
+
+---
+
+**rem 的优点和缺点**
+
+优点：
+
+```
+全局统一缩放
+适合移动端等比例适配
+比 em 稳定
+```
+
+缺点：
+
+```
+需要 JS 或构建工具换算
+大屏下可能过度放大
+不是所有场景都适合等比例缩放
+```
+
+所以实际项目里经常会限制最大宽度：
+
+```
+const width = Math.min(document.documentElement.clientWidth, 750)
+```
+
+避免平板或 PC 上字体巨大。
+
+---
+
+**六、vw / vh**
+
+`vw` 和 `vh` 是视口单位。
+
+```
+1vw = 视口宽度的 1%
+1vh = 视口高度的 1%
+```
+
+比如视口宽度是 375px：
+
+```
+1vw = 3.75px
+100vw = 375px
+```
+
+示例：
+
+```
+.banner {
+  width: 100vw;
+  height: 50vw;
+}
+```
+
+表示 banner 宽度等于视口宽度，高度是视口宽度的一半。
+
+---
+
+**vw 适配设计稿**
+
+如果设计稿宽度是 750px。
+
+设计稿里某个元素宽 75px。
+
+换成 vw：
+
+```
+75 / 750 * 100 = 10vw
+```
+
+所以：
+
+```
+.box {
+  width: 10vw;
+}
+```
+
+屏幕越宽，元素越宽。
+
+---
+
+**vh 的坑**
+
+移动端 `100vh` 有时候不好用。
+
+因为浏览器地址栏会收起 / 展开，导致可视区域变化。
+
+比如：
+
+```
+.page {
+  height: 100vh;
+}
+```
+
+在移动端可能出现底部被遮挡或跳动。
+
+现在可以了解新单位：
+
+```
+100dvh
+100svh
+100lvh
+```
+
+简单理解：
+
+```
+dvh：动态视口高度
+svh：小视口高度
+lvh：大视口高度
+```
+
+面试中提一句即可，不需要深挖。
+
+---
+
+**七、媒体查询**
+
+媒体查询用于根据屏幕宽度、设备特性应用不同样式。
+
+```
+.container {
+  width: 1200px;
+}
+
+@media (max-width: 768px) {
+  .container {
+    width: 100%;
+    padding: 16px;
+  }
+}
+```
+
+意思是：
+
+> 当视口宽度小于等于 768px 时，应用里面的样式。
+
+---
+
+**常见断点**
+
+```
+/* 手机 */
+@media (max-width: 767px) {}
+
+/* 平板 */
+@media (min-width: 768px) and (max-width: 1023px) {}
+
+/* 桌面 */
+@media (min-width: 1024px) {}
+```
+
+响应式布局常见策略：
+
+```
+小屏一列
+中屏两列
+大屏三列或四列
+```
+
+示例：
+
+```
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+```
+
+---
+
+**八、移动端适配常见方案**
+
+**1. viewport + 百分比 / flex**
+
+```
+.layout {
+  display: flex;
+}
+
+.left {
+  flex: 1;
+}
+
+.right {
+  flex: 2;
+}
+```
+
+适合弹性布局。
+
+---
+
+**2. rem 方案**
+
+根据屏幕宽度动态设置 `html font-size`。
+
+适合按设计稿等比例还原。
+
+---
+
+**3. vw 方案**
+
+直接用视口宽度计算。
+
+```
+.box {
+  width: 20vw;
+}
+```
+
+或者配合 PostCSS 插件自动把 px 转 vw。
+
+---
+
+**4. 媒体查询**
+
+适合多端响应式，比如 PC + 平板 + 手机。
+
+---
+
+**5. max-width 居中容器**
+
+很多移动端页面会这样：
+
+```
+.app {
+  max-width: 750px;
+  margin: 0 auto;
+}
+```
+
+避免在大屏上无限拉伸。
+
+---
+
+**九、1px 问题**
+
+移动端常说的 1px 问题是：
+
+> 在高 DPR 屏幕上，CSS 的 1px 会对应多个物理像素，看起来比设计稿里的 1 物理像素更粗。
+
+例如 DPR = 2：
+
+```
+1 CSS px = 2 物理像素
+```
+
+所以：
+
+```
+border: 1px solid #ddd;
+```
+
+在视觉上可能显得偏粗。
+
+---
+
+**解决方案 1：transform scale**
+
+用伪元素画边框，然后缩放。
+
+```
+.hairline {
+  position: relative;
+}
+
+.hairline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  border-bottom: 1px solid #ddd;
+  transform: scaleY(0.5);
+  transform-origin: 0 100%;
+}
+```
+
+在 DPR = 2 的屏幕上，把 1px 缩成 0.5 CSS px，视觉上接近 1 物理像素。
+
+如果 DPR = 3，可以用：
+
+```
+transform: scaleY(0.333);
+```
+
+但通常项目里会用统一 mixin 或组件处理。
+
+---
+
+**解决方案 2：使用 viewport 缩放方案**
+
+有些老移动端方案会根据 DPR 设置 viewport scale。
+
+比如 DPR = 2 时：
+
+```
+<meta name="viewport" content="initial-scale=0.5">
+```
+
+这样 1 CSS px 会更接近 1 物理像素。
+
+但这种方案现在不如以前常用，维护成本高。
+
+---
+
+**解决方案 3：直接接受**
+
+现在很多业务里不一定强求物理 1px。
+
+因为不同设备、不同屏幕显示效果差异很大。
+
+如果对视觉要求不是特别高，直接：
+
+```
+border: 1px solid #eee;
+```
+
+也可以接受。
+
+---
+
+**十、单位怎么选**
+
+|单位|适合场景|
+|---|---|
+|`px`|固定尺寸、边框、图标|
+|`em`|和当前字体大小关联的局部尺寸，比如按钮 padding|
+|`rem`|全局尺寸、移动端等比例适配|
+|`%`|相对于父元素的弹性尺寸|
+|`vw/vh`|相对于视口的尺寸，适合全屏、响应式|
+|`fr`|Grid 中分配剩余空间|
+
+---
+
+**面试版总结**
+
+可以这样说：
+
+> 响应式和移动端适配的核心是让页面在不同屏幕尺寸和不同 DPR 设备上保持合理显示。`px` 是 CSS 像素，不一定等于物理像素；DPR 表示物理像素和 CSS 像素的比例。移动端通常需要设置 viewport，让布局视口等于设备宽度。
+> 
+> `em` 相对于当前元素字体大小，适合做局部跟随文字缩放的尺寸；`rem` 相对于根元素字体大小，适合做全局适配；`vw/vh` 相对于视口宽高，适合直接按屏幕比例布局。响应式布局常用媒体查询，根据不同屏幕宽度切换布局，比如手机一列、平板两列、桌面多列。
+> 
+> 移动端适配常见方案有 viewport + flex/百分比、rem 等比例缩放、vw 适配、媒体查询等。1px 问题是因为高 DPR 屏幕下 1 CSS px 对应多个物理像素，边框看起来偏粗，常用伪元素加 `transform: scaleY(0.5)` 的方式模拟更细的边框。
+
+
+## 渲染与性能
+
+这部分面试要抓住一条线：
+
+> 浏览器把 DOM 和 CSS 变成屏幕上的像素，中间经历了样式计算、布局、绘制、合成。性能优化的核心，就是尽量少触发昂贵阶段。
+
+---
+
+**一、浏览器渲染流程**
+
+简化流程是：
+
+```
+HTML -> DOM
+CSS -> CSSOM
+DOM + CSSOM -> Render Tree
+Style 样式计算
+Layout 回流 / 布局
+Paint 重绘 / 绘制
+Composite 合成
+```
+
+你可以重点记后四步：
+
+```
+Style -> Layout -> Paint -> Composite
+```
+
+每个阶段做什么？
+
+**Style 样式计算**
+
+浏览器根据 CSS 选择器、继承、优先级，计算每个元素最终样式。
+
+比如：
+
+```
+.box {
+  color: red;
+  width: 100px;
+}
+```
+
+浏览器要知道 `.box` 最终的 `color`、`width`、`display` 等。
+
+---
+
+**Layout / Reflow 回流**
+
+计算每个元素的几何信息：
+
+```
+宽度
+高度
+位置
+行高
+换行
+盒模型
+```
+
+例如：
+
+```
+.box {
+  width: 50%;
+  padding: 20px;
+}
+```
+
+浏览器要根据父元素宽度算出 `.box` 真实宽度。
+
+---
+
+**Paint / Repaint 重绘**
+
+把元素的视觉样式画出来：
+
+```
+文字
+颜色
+背景
+边框
+阴影
+图片
+```
+
+比如：
+
+```
+background-color: red;
+box-shadow: 0 0 10px #000;
+```
+
+这些属于绘制内容。
+
+---
+
+**Composite 合成**
+
+现代浏览器会把页面分成多个图层，最后把这些图层合成为最终画面。
+
+比如某些元素可能单独成为合成层：
+
+```
+transform
+opacity
+will-change
+position: fixed
+video
+canvas
+```
+
+合成阶段负责把多个图层按顺序合到屏幕上。
+
+---
+
+**二、回流 Reflow / Layout**
+
+回流就是重新计算布局。
+
+只要某个操作影响了元素的几何信息，就可能触发回流。
+
+比如：
+
+```
+el.style.width = '200px'
+el.style.height = '100px'
+el.style.margin = '20px'
+el.style.padding = '10px'
+el.style.display = 'none'
+```
+
+这些都会改变元素占据空间。
+
+---
+
+**常见触发回流的操作**
+
+```
+width
+height
+margin
+padding
+border
+display
+position
+top
+left
+right
+bottom
+font-size
+line-height
+```
+
+DOM 结构变化也会触发：
+
+```
+parent.appendChild(child)
+parent.removeChild(child)
+el.innerHTML = '...'
+```
+
+读取布局信息也可能强制回流：
+
+```
+el.offsetWidth
+el.offsetHeight
+el.offsetTop
+el.clientWidth
+el.scrollHeight
+el.getBoundingClientRect()
+getComputedStyle(el)
+```
+
+尤其是这种模式很危险：
+
+```
+el.style.width = '300px'
+console.log(el.offsetHeight)
+```
+
+因为浏览器为了返回最新高度，被迫立刻计算布局。
+
+---
+
+**三、重绘 Repaint / Paint**
+
+重绘是元素布局没变，但视觉样式变了，需要重新画。
+
+比如：
+
+```
+el.style.color = 'red'
+el.style.backgroundColor = 'blue'
+el.style.visibility = 'hidden'
+el.style.borderColor = '#ddd'
+```
+
+这些通常不改变元素占据空间，只改变外观。
+
+注意一句面试高频：
+
+```
+回流一定会导致重绘，重绘不一定导致回流。
+```
+
+比如：
+
+```
+el.style.width = '200px'
+```
+
+会影响布局，所以：
+
+```
+回流 + 重绘
+```
+
+但：
+
+```
+el.style.backgroundColor = 'red'
+```
+
+通常只是：
+
+```
+重绘
+```
+
+---
+
+**四、合成 Composite**
+
+合成是浏览器把不同图层组合成最终画面。
+
+有些属性变化不需要重新布局，也不需要重新绘制，只需要合成。
+
+典型：
+
+```
+transform
+opacity
+```
+
+例如：
+
+```
+.box {
+  transform: translateX(100px);
+}
+```
+
+理想情况下流程是：
+
+```
+跳过 Layout
+跳过 Paint
+只做 Composite
+```
+
+所以动画推荐使用：
+
+```
+transform
+opacity
+```
+
+而不是：
+
+```
+left
+top
+width
+height
+margin
+```
+
+---
+
+**五、举个动画例子**
+
+不推荐：
+
+```
+.box {
+  position: absolute;
+  left: 0;
+  transition: left 0.3s;
+}
+
+.box:hover {
+  left: 100px;
+}
+```
+
+改变 `left` 会影响布局位置，可能触发回流。
+
+推荐：
+
+```
+.box {
+  transform: translateX(0);
+  transition: transform 0.3s;
+}
+
+.box:hover {
+  transform: translateX(100px);
+}
+```
+
+`transform` 通常只触发合成，性能更好。
+
+---
+
+**六、opacity 动画**
+
+推荐：
+
+```
+.fade {
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+
+.fade.hide {
+  opacity: 0;
+}
+```
+
+`opacity` 不影响布局，通常适合做淡入淡出。
+
+但注意：
+
+```
+opacity: 0;
+```
+
+元素只是透明了，仍然占据空间，也仍然可能响应事件。
+
+如果不希望点击到它，可以加：
+
+```
+pointer-events: none;
+```
+
+如果想完全不占空间，要用：
+
+```
+display: none;
+```
+
+但 `display` 无法直接做过渡动画，因为它会影响布局。
+
+---
+
+**七、CSS 动画优化原则**
+
+**1. 优先使用 transform / opacity**
+
+比如移动：
+
+```
+transform: translateX(100px);
+```
+
+比如缩放：
+
+```
+transform: scale(1.1);
+```
+
+比如淡入淡出：
+
+```
+opacity: 0.5;
+```
+
+避免频繁改变：
+
+```
+width
+height
+top
+left
+margin
+padding
+```
+
+---
+
+**2. 避免大面积重绘**
+
+比如频繁改变：
+
+```
+box-shadow
+filter
+background
+border-radius
+```
+
+可能导致绘制成本很高。
+
+尤其是：
+
+```
+filter: blur(10px);
+box-shadow: 0 0 50px rgba(0,0,0,.5);
+```
+
+如果大面积动画，会很卡。
+
+---
+
+**3. 使用 will-change 要谨慎**
+
+```
+.box {
+  will-change: transform;
+}
+```
+
+它是在告诉浏览器：
+
+> 这个元素接下来可能会发生 transform 变化，你可以提前优化。
+
+浏览器可能会提前把它提升到单独图层。
+
+但不要滥用：
+
+```
+* {
+  will-change: transform;
+}
+```
+
+这样会创建太多图层，占用内存，反而变慢。
+
+建议只给即将动画的元素使用，并在动画结束后移除。
+
+---
+
+**4. JS 动画使用 requestAnimationFrame**
+
+不推荐：
+
+```
+setInterval(() => {
+  box.style.transform = `translateX(${x++}px)`
+}, 16)
+```
+
+推荐：
+
+```
+function animate() {
+  x += 1
+  box.style.transform = `translateX(${x}px)`
+  requestAnimationFrame(animate)
+}
+
+requestAnimationFrame(animate)
+```
+
+`requestAnimationFrame` 会和浏览器刷新节奏对齐，通常是每秒 60 次左右。
+
+好处：
+
+```
+减少掉帧
+后台标签页会降频
+更适合视觉更新
+```
+
+---
+
+**5. 避免布局抖动**
+
+差写法：
+
+```
+items.forEach(item => {
+  item.style.width = '300px'
+  const height = item.offsetHeight
+  item.style.height = height + 20 + 'px'
+})
+```
+
+这是：
+
+```
+写样式 -> 读布局 -> 写样式 -> 读布局
+```
+
+可能多次强制同步布局。
+
+好写法：
+
+```
+const heights = Array.from(items, item => item.offsetHeight)
+
+items.forEach((item, index) => {
+  item.style.height = heights[index] + 20 + 'px'
+})
+```
+
+或者：
+
+```
+items.forEach(item => {
+  item.style.width = '300px'
+})
+
+requestAnimationFrame(() => {
+  const heights = Array.from(items, item => item.offsetHeight)
+
+  items.forEach((item, index) => {
+    item.style.height = heights[index] + 20 + 'px'
+  })
+})
+```
+
+核心是：
+
+```
+读写分离，批量操作
+```
+
+---
+
+**八、图层是什么**
+
+浏览器为了优化，会把页面拆成多个图层。
+
+某些元素可能被提升到独立图层：
+
+```
+transform: translateZ(0);
+will-change: transform;
+position: fixed;
+video;
+canvas;
+```
+
+独立图层的好处是：
+
+> 当这个元素移动或透明度变化时，浏览器可以只重新合成这个图层，而不用重绘整个页面。
+
+但图层也不是越多越好。
+
+太多图层会导致：
+
+```
+内存增加
+合成成本增加
+移动端掉帧
+```
+
+---
+
+**九、怎么排查性能问题**
+
+Chrome DevTools 里常用：
+
+**Performance 面板**
+
+可以看到：
+
+```
+Scripting
+Rendering
+Painting
+Compositing
+Long Task
+FPS
+```
+
+如果 Layout 很多，说明回流多。
+
+如果 Paint 很多，说明重绘多。
+
+如果 JS 时间很长，说明脚本阻塞主线程。
+
+---
+
+**Rendering 面板**
+
+可以开启：
+
+```
+Paint flashing
+Layer borders
+FPS meter
+```
+
+`Paint flashing` 会高亮重绘区域，方便看哪里频繁重绘。
+
+---
+
+**十、常见面试问法**
+
+**1. 回流和重绘区别？**
+
+答：
+
+> 回流是重新计算元素的位置和尺寸，重绘是重新绘制元素的外观。改变宽高、位置、display 等会触发回流；改变颜色、背景、visibility 等通常触发重绘。回流一定会伴随重绘，但重绘不一定触发回流。
+
+---
+
+**2. 为什么 transform 比 left 动画性能好？**
+
+答：
+
+> `left` 会改变元素在布局中的位置，可能触发布局计算和重绘；`transform` 只改变元素的视觉变换，不影响普通流布局，很多情况下可以由合成线程处理，只触发 composite，所以性能更好。
+
+---
+
+**3. will-change 是什么？**
+
+答：
+
+> `will-change` 用来提前告诉浏览器某个属性即将变化，比如 `will-change: transform`，浏览器可能提前为元素创建合成层来优化动画。但不能滥用，因为过多图层会增加内存和合成成本。
+
+---
+
+**4. 如何减少回流重绘？**
+
+答：
+
+> 可以批量修改 DOM，读写分离，避免循环中交替读取布局和写样式；动画优先使用 `transform` 和 `opacity`；复杂列表使用虚拟滚动；大量 DOM 插入可以用 `DocumentFragment`；避免频繁修改影响布局的属性，比如 width、height、top、left。
+
+---
+
+**面试版总结**
+
+可以这样说：
+
+> 浏览器渲染大致经历样式计算、布局、绘制和合成。布局也叫回流，负责计算元素的位置和尺寸；绘制也叫重绘，负责画出文字、颜色、背景、边框等视觉效果；合成则是把多个图层组合成最终画面。
+> 
+> 如果修改 `width`、`height`、`margin`、`display`、`top/left` 等影响几何信息的属性，会触发回流，回流后通常还会重绘。如果只是修改 `color`、`background-color`、`visibility` 这类不影响布局的属性，通常只触发重绘。`transform` 和 `opacity` 不影响布局，很多情况下可以跳过 layout 和 paint，只在合成阶段处理，所以动画性能更好。
+> 
+> 优化时要减少强制同步布局，避免在循环里反复“写样式、读布局”，做到读写分离；动画优先使用 `transform` 和 `opacity`；谨慎使用 `will-change`；必要时用 `requestAnimationFrame` 做 JS 动画，并通过 DevTools Performance 面板观察 Layout、Paint 和 FPS。
+
+
+## 工程化 CSS
+
+这部分面试关注的不是“你会不会写样式”，而是：
+
+> 项目变大后，如何让 CSS 可维护、可复用、不会互相污染。
+
+核心问题有几个：
+
+```
+样式污染
+命名冲突
+样式复用
+主题定制
+构建能力
+团队规范
+```
+
+**一、为什么需要 CSS 工程化**
+
+原生 CSS 是全局生效的。
+
+比如 A 组件写：
+
+```
+.title {
+  color: red;
+}
+```
+
+B 组件也写：
+
+```
+.title {
+  color: blue;
+}
+```
+
+如果它们都被打包到页面里，后加载的可能覆盖前面的。
+
+这就是样式污染。
+
+所以工程化 CSS 要解决：
+
+```
+如何让样式只作用于当前组件？
+如何避免 class 命名冲突？
+如何复用变量、函数、公共样式？
+如何统一团队写法？
+```
+
+---
+
+**二、scoped**
+
+Vue 单文件组件里常见：
+
+```
+<template>
+  <div class="card">
+    <h2 class="title">标题</h2>
+  </div>
+</template>
+
+<style scoped>
+.card {
+  padding: 16px;
+}
+
+.title {
+  color: red;
+}
+</style>
+```
+
+`scoped` 的原理不是 Shadow DOM，而是编译时给元素和选择器加唯一属性。
+
+大概会编译成：
+
+```
+<div class="card" data-v-abc123>
+  <h2 class="title" data-v-abc123>标题</h2>
+</div>
+```
+
+CSS 变成：
+
+```
+.card[data-v-abc123] {
+  padding: 16px;
+}
+
+.title[data-v-abc123] {
+  color: red;
+}
+```
+
+这样样式只会命中当前组件里的元素。
+
+**scoped 的优点：**
+
+```
+简单好用
+适合 Vue 组件级样式隔离
+不容易污染其他组件
+```
+
+**scoped 的注意点：**
+
+父组件的 scoped 样式默认影响不到子组件内部结构。如果要穿透子组件样式，要用深度选择器。
+
+Vue3 常见：
+
+```
+:deep(.el-button) {
+  border-radius: 4px;
+}
+```
+
+比如改 Element Plus 内部样式时会用到。
+
+但要注意：
+
+> `:deep()` 用多了，本质上还是在打破样式隔离，维护成本会上升。
+
+---
+
+**三、CSS Modules**
+
+CSS Modules 常见于 React，也可以用于 Vue。
+
+写法：
+
+```
+/* Button.module.css */
+.button {
+  color: white;
+  background: blue;
+}
+
+.primary {
+  border-radius: 4px;
+}
+```
+
+组件中使用：
+
+```
+import styles from './Button.module.css'
+
+export default function Button() {
+  return (
+    <button className={styles.button}>
+      按钮
+    </button>
+  )
+}
+```
+
+构建后 class 会被转换成唯一名字：
+
+```
+<button class="Button_button__a8x3k">
+  按钮
+</button>
+```
+
+CSS 也变成：
+
+```
+.Button_button__a8x3k {
+  color: white;
+  background: blue;
+}
+```
+
+所以不同文件里即使都写 `.button`，也不会冲突。
+
+**CSS Modules 的特点：**
+
+```
+局部作用域
+class 名自动 hash
+适合组件化项目
+和 JS 模块系统结合紧密
+```
+
+如果要写全局样式，可以用：
+
+```
+:global(.reset) {
+  margin: 0;
+}
+```
+
+面试可以说：
+
+> CSS Modules 是通过构建工具把 class 名编译成唯一标识，从而实现样式局部作用域。
+
+---
+
+**四、scoped 和 CSS Modules 的区别**
+
+|对比|scoped|CSS Modules|
+|---|---|---|
+|常见场景|Vue SFC|React / Vue 都可|
+|原理|给 DOM 和选择器加属性选择器|class 名 hash|
+|使用方式|直接写 class|通过 `styles.xxx` 引用|
+|隔离粒度|组件级|模块文件级|
+|全局样式|`:global` / 普通 style|`:global`|
+
+简单说：
+
+```
+Vue scoped：靠 data-v 属性隔离
+CSS Modules：靠 class 名 hash 隔离
+```
+
+---
+
+**五、Sass / Less**
+
+Sass 和 Less 都是 CSS 预处理器。
+
+它们解决的是：
+
+> 原生 CSS 早期缺少变量、嵌套、函数、混入等能力，写复杂样式不方便。
+
+虽然现在 CSS 原生已经支持变量、嵌套也越来越普及，但 Sass/Less 在企业项目里仍然很常见。
+
+---
+
+**1. 变量**
+
+Sass：
+
+```
+$primary-color: #409eff;
+
+.button {
+  color: $primary-color;
+}
+```
+
+Less：
+
+```
+@primary-color: #409eff;
+
+.button {
+  color: @primary-color;
+}
+```
+
+适合统一主题色、间距、字号。
+
+---
+
+**2. 嵌套**
+
+```
+.card {
+  padding: 16px;
+
+  .title {
+    font-size: 18px;
+  }
+
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+}
+```
+
+会编译成：
+
+```
+.card {
+  padding: 16px;
+}
+
+.card .title {
+  font-size: 18px;
+}
+
+.card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+```
+
+注意嵌套不要太深，否则选择器复杂、维护困难。
+
+一般建议不要超过 3 层。
+
+---
+
+**3. mixin 混入**
+
+```
+@mixin flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal {
+  @include flex-center;
+}
+```
+
+适合复用一组样式。
+
+---
+
+**4. 函数和计算**
+
+```
+@function px-to-rem($px) {
+  @return $px / 16 * 1rem;
+}
+
+.title {
+  font-size: px-to-rem(24);
+}
+```
+
+---
+
+**Sass/Less 面试回答**
+
+可以说：
+
+> Sass/Less 是 CSS 预处理器，提供变量、嵌套、mixin、函数、模块拆分等能力，可以提升样式复用和维护性。它们最终都会被构建工具编译成普通 CSS。实际项目中会用变量管理主题色和间距，用 mixin 封装重复样式，但要避免嵌套过深导致选择器复杂。
+
+---
+
+**六、Tailwind CSS**
+
+Tailwind 是一种原子化 CSS 框架。
+
+它不是这样写：
+
+```
+.card {
+  padding: 16px;
+  background: white;
+  border-radius: 8px;
+}
+```
+
+而是在 HTML / JSX / Vue 模板里直接写工具类：
+
+```
+<div class="p-4 bg-white rounded shadow text-gray-800">
+  内容
+</div>
+```
+
+这些类分别表示：
+
+```
+p-4：padding
+bg-white：背景色
+rounded：圆角
+shadow：阴影
+text-gray-800：文字颜色
+```
+
+---
+
+**Tailwind 的优点**
+
+```
+不用频繁起 class 名
+样式约束统一
+开发速度快
+天然避免很多全局样式污染
+最终可按需生成 CSS，体积可控
+```
+
+比如团队统一了 spacing scale：
+
+```
+p-2
+p-4
+p-6
+```
+
+就不会每个人随便写：
+
+```
+padding: 13px;
+padding: 17px;
+```
+
+设计一致性更好。
+
+---
+
+**Tailwind 的缺点**
+
+```
+模板里 class 很长
+初学可读性不适应
+复杂状态下 class 管理成本高
+需要团队统一规范
+```
+
+比如：
+
+```
+<button class="inline-flex items-center justify-center rounded px-3 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+  提交
+</button>
+```
+
+看起来会比较长。
+
+所以大型项目里通常会结合组件封装，把复杂 class 收到组件内部。
+
+---
+
+**Tailwind 适合什么场景**
+
+适合：
+
+```
+中后台
+快速搭建 UI
+设计系统约束明确的项目
+组件化项目
+```
+
+不适合：
+
+```
+团队完全不接受原子类
+强依赖传统语义 class 的老项目
+极复杂的定制视觉但没有组件封装
+```
+
+---
+
+**七、命名规范**
+
+如果项目不用 scoped / CSS Modules / Tailwind，而是传统 CSS，就需要命名规范。
+
+常见是 BEM。
+
+BEM 全称：
+
+```
+Block Element Modifier
+```
+
+写法：
+
+```
+.card {}
+.card__title {}
+.card__body {}
+.card--active {}
+```
+
+对应：
+
+```
+<div class="card card--active">
+  <h2 class="card__title">标题</h2>
+  <div class="card__body">内容</div>
+</div>
+```
+
+含义：
+
+```
+Block：独立模块，比如 card
+Element：模块内部元素，比如 card__title
+Modifier：状态或变体，比如 card--active
+```
+
+优点：
+
+```
+命名清晰
+减少冲突
+不用依赖构建工具
+适合传统项目和公共样式库
+```
+
+缺点：
+
+```
+class 名较长
+写起来繁琐
+```
+
+---
+
+**八、样式隔离方案总结**
+
+常见隔离方式：
+
+```
+命名规范：靠人为约束，比如 BEM
+scoped：Vue 编译时加 data-v 属性
+CSS Modules：构建时 class hash
+CSS-in-JS：样式写在 JS 中，运行时或编译时生成唯一 class
+Shadow DOM：浏览器原生隔离
+Tailwind：通过原子类减少自定义样式冲突
+```
+
+---
+
+**Shadow DOM 简单了解**
+
+Web Components 里有 Shadow DOM。
+
+```
+const shadow = element.attachShadow({ mode: 'open' })
+shadow.innerHTML = `
+  <style>
+    p { color: red; }
+  </style>
+  <p>Hello</p>
+`
+```
+
+Shadow DOM 里的样式默认不会影响外部，外部样式也不容易影响内部。
+
+是真正的浏览器级样式隔离。
+
+但在普通 Vue/React 业务项目里，不如 scoped、CSS Modules 常见。
+
+---
+
+**九、实际项目怎么选**
+
+Vue 项目常见：
+
+```
+组件样式：scoped
+全局变量：Sass/Less
+UI 库覆盖：:deep()
+全局 reset/theme：单独 global.css
+```
+
+React 项目常见：
+
+```
+CSS Modules
+Sass Modules
+CSS-in-JS
+Tailwind
+```
+
+中后台快速开发：
+
+```
+Tailwind + 组件库
+```
+
+传统大型页面：
+
+```
+BEM + Sass
+```
+
+组件库：
+
+```
+BEM / CSS Modules / CSS-in-JS / CSS Variables
+```
+
+---
+
+**十、面试版总结**
+
+可以这样说：
+
+> CSS 工程化主要是为了解决样式污染、命名冲突、复用困难和团队规范问题。Vue 里常用 `scoped`，它的原理是编译时给元素和选择器加类似 `data-v-xxx` 的属性选择器，实现组件级样式隔离。React 中常见 CSS Modules，它会把 class 名编译成带 hash 的唯一名字，通过 `styles.xxx` 使用，避免不同文件之间 class 冲突。
+> 
+> Sass/Less 是 CSS 预处理器，提供变量、嵌套、mixin、函数等能力，适合管理主题色、间距和复用样式，但要避免嵌套过深。Tailwind 是原子化 CSS 框架，通过工具类快速组合样式，能减少命名成本并保持设计约束，但模板 class 会变长，通常需要结合组件封装。
+> 
+> 如果没有模块化隔离，也可以用 BEM 这类命名规范降低冲突。实际项目中通常会组合使用，比如 Vue 项目用 scoped 做局部隔离，用 Sass 管理变量，用全局 CSS 放 reset 和主题变量，需要覆盖子组件时谨慎使用 `:deep()`。
+
+
+# TypeScript
+
+**1. TypeScript 是什么**
+
+TypeScript 是 JavaScript 的超集。
+
+也就是说：
+
+```
+const name = 'Tom'
+```
+
+这既是 JS，也是 TS。
+
+TS 在 JS 基础上增加了：
+
+```
+静态类型检查
+接口 interface
+类型别名 type
+泛型 generic
+枚举 enum
+访问修饰符
+装饰器 decorator
+类型推导
+高级类型
+```
+
+最终 TS 不能直接在浏览器或 Node 中运行，需要编译成 JS。
+
+面试可以说：
+
+> TypeScript 本质上是在开发阶段给 JavaScript 增加静态类型系统，帮助我们提前发现类型错误，提升代码可维护性和编辑器提示能力，最终还是会被编译成 JavaScript 运行。
+
+---
+
+**2. TS 解决了什么问题**
+
+JS 是动态类型：
+
+```
+function add(a, b) {
+  return a + b
+}
+
+add(1, 2)
+add('1', 2)
+add(null, {})
+```
+
+这些在 JS 里都可能运行，但结果不一定符合预期。
+
+TS 可以提前限制：
+
+```
+function add(a: number, b: number): number {
+  return a + b
+}
+
+add(1, 2)
+add('1', 2) // 报错
+```
+
+TS 主要解决：
+
+```
+减少运行时类型错误
+提升大型项目可维护性
+增强 IDE 提示和重构能力
+让接口数据结构更清晰
+方便团队协作
+```
+
+---
+
+**3. 基础类型**
+
+你需要熟悉这些：
+
+```
+let name: string = 'Tom'
+let age: number = 18
+let isAdmin: boolean = false
+let list: number[] = [1, 2, 3]
+let names: Array<string> = ['a', 'b']
+let value: null = null
+let u: undefined = undefined
+```
+
+对象：
+
+```
+const user: { name: string; age: number } = {
+  name: 'Tom',
+  age: 18
+}
+```
+
+函数：
+
+```
+function getUser(id: number): string {
+  return `user-${id}`
+}
+```
+
+可选参数：
+
+```
+function createUser(name: string, age?: number) {}
+```
+
+默认值：
+
+```
+function createUser(name: string, age = 18) {}
+```
+
+---
+
+**4. any、unknown、never、void**
+
+这几个面试很常见。
+
+`any`：放弃类型检查。
+
+```
+let value: any = 1
+value = 'hello'
+value.foo.bar()
+```
+
+能不用就不用。
+
+`unknown`：不知道类型，但更安全。
+
+```
+let value: unknown = 'hello'
+
+if (typeof value === 'string') {
+  console.log(value.toUpperCase())
+}
+```
+
+区别：
+
+```
+any 是我不管了
+unknown 是我现在不知道，用之前要先判断
+```
+
+`void`：函数没有返回值。
+
+```
+function log(): void {
+  console.log('hello')
+}
+```
+
+`never`：永远不会有返回值。
+
+```
+function throwError(): never {
+  throw new Error('error')
+}
+```
+
+或者死循环：
+
+```
+function loop(): never {
+  while (true) {}
+}
+```
+
+---
+
+**5. interface 和 type**
+
+`interface` 常用于描述对象结构：
+
+```
+interface User {
+  id: number
+  name: string
+  age?: number
+}
+
+const user: User = {
+  id: 1,
+  name: 'Tom'
+}
+```
+
+`type` 也可以描述对象：
+
+```
+type User = {
+  id: number
+  name: string
+}
+```
+
+它们区别可以这样记：
+
+`interface`：
+
+```
+更适合描述对象、类的结构
+可以重复声明并自动合并
+可以被 class implements
+```
+
+```
+interface User {
+  name: string
+}
+
+interface User {
+  age: number
+}
+
+const user: User = {
+  name: 'Tom',
+  age: 18
+}
+```
+
+`type`：
+
+```
+更灵活，可以定义联合类型、交叉类型、基础类型别名
+```
+
+```
+type ID = string | number
+
+type Status = 'pending' | 'success' | 'fail'
+
+type UserWithRole = User & {
+  role: string
+}
+```
+
+面试版：
+
+> interface 更偏向描述对象结构，适合类实现和扩展；type 更灵活，可以表达联合类型、交叉类型、字面量类型等。日常项目里对象模型可以优先 interface，复杂类型组合常用 type。
+
+---
+
+**6. 联合类型和字面量类型**
+
+联合类型：
+
+```
+let id: string | number
+
+id = 'abc'
+id = 123
+```
+
+字面量类型：
+
+```
+type Role = 'admin' | 'user' | 'guest'
+
+function setRole(role: Role) {}
+
+setRole('admin')
+setRole('xxx') // 报错
+```
+
+这个很适合限制状态值：
+
+```
+type OrderStatus = 'created' | 'paid' | 'closed'
+```
+
+比单纯 `string` 更安全。
+
+---
+
+**7. 泛型**
+
+泛型是 TS 核心之一，可以理解为：
+
+> 类型参数化，让函数、接口、类在保持类型安全的同时复用。
+
+不用泛型：
+
+```
+function identity(value: any): any {
+  return value
+}
+```
+
+问题是丢失类型。
+
+用泛型：
+
+```
+function identity<T>(value: T): T {
+  return value
+}
+
+const a = identity<string>('hello')
+const b = identity<number>(123)
+```
+
+也可以让 TS 自动推导：
+
+```
+const a = identity('hello') // string
+const b = identity(123) // number
+```
+
+常见接口：
+
+```
+interface ApiResponse<T> {
+  code: number
+  message: string
+  data: T
+}
+
+interface User {
+  id: number
+  name: string
+}
+
+const res: ApiResponse<User> = {
+  code: 0,
+  message: 'ok',
+  data: {
+    id: 1,
+    name: 'Tom'
+  }
+}
+```
+
+这个和后端接口返回结构非常相关，建议你重点掌握。
+
+---
+
+**8. class 相关**
+
+NestJS 大量使用 class。
+
+```
+class UserService {
+  private users: string[] = []
+
+  public addUser(name: string): void {
+    this.users.push(name)
+  }
+
+  protected getUsers(): string[] {
+    return this.users
+  }
+}
+```
+
+访问修饰符：
+
+```
+public：默认，外部可访问
+private：只能类内部访问
+protected：类内部和子类可访问
+readonly：只读，初始化后不能改
+```
+
+```
+class User {
+  readonly id: number
+
+  constructor(id: number, public name: string) {
+    this.id = id
+  }
+}
+```
+
+构造函数参数属性简写：
+
+```
+class User {
+  constructor(
+    public id: number,
+    private name: string
+  ) {}
+}
+```
+
+等价于自动声明并赋值。
+
+---
+
+**9. 装饰器 Decorator**
+
+这个和 NestJS 强相关。
+
+NestJS 里你会看到：
+
+```
+@Controller('user')
+export class UserController {
+  constructor(private readonly userService: UserService) {}
+
+  @Get(':id')
+  getUser(@Param('id') id: string) {
+    return this.userService.findOne(id)
+  }
+}
+```
+
+这些：
+
+```
+@Controller()
+@Get()
+@Param()
+@Injectable()
+```
+
+都是装饰器。
+
+装饰器本质上是一种特殊函数，用来给类、方法、属性、参数添加元数据或增强行为。
+
+比如：
+
+```
+@Injectable()
+export class UserService {}
+```
+
+告诉 Nest：
+
+> 这个类可以交给依赖注入容器管理。
+
+```
+@Controller('user')
+```
+
+告诉 Nest：
+
+> 这个类是控制器，路由前缀是 `/user`。
+
+```
+@Get(':id')
+```
+
+告诉 Nest：
+
+> 这个方法处理 GET /user/:id 请求。
+
+面试里可以说：
+
+> NestJS 大量使用 TypeScript 装饰器来声明路由、依赖注入、参数解析、守卫、拦截器等元信息。装饰器不会改变 TypeScript 最终仍编译成 JS 的事实，但它配合 reflect-metadata 可以让框架在运行时读取这些元数据，实现 IoC 和声明式编程。
+
+这句很加分。
+
+---
+
+**10. DTO 和类型校验**
+
+NestJS 项目里常见 DTO：
+
+```
+export class CreateUserDto {
+  name: string
+  age: number
+}
+```
+
+配合 `class-validator`：
+
+```
+import { IsString, IsNumber, Min } from 'class-validator'
+
+export class CreateUserDto {
+  @IsString()
+  name: string
+
+  @IsNumber()
+  @Min(0)
+  age: number
+}
+```
+
+Controller：
+
+```
+@Post()
+create(@Body() dto: CreateUserDto) {
+  return this.userService.create(dto)
+}
+```
+
+这里 TS 类型主要用于开发阶段检查。
+
+而 `class-validator` 是运行时校验。
+
+你要分清：
+
+```
+TypeScript 类型：编译阶段检查，运行时会被擦除
+class-validator：运行时校验真实请求数据
+```
+
+这是 NestJS 面试常问点。
+
+---
+
+**11. TS 类型会在运行时存在吗**
+
+大多数不会。
+
+比如：
+
+```
+function add(a: number, b: number): number {
+  return a + b
+}
+```
+
+编译成 JS 后大概是：
+
+```
+function add(a, b) {
+  return a + b
+}
+```
+
+`: number` 没了。
+
+所以：
+
+> TS 类型只在编译阶段生效，运行时不存在。
+
+这就是为什么后端接口入参不能只靠 TS 类型，还要用 DTO 校验。
+
+---
+
+**12. 常用工具类型**
+
+先掌握这几个：
+
+`Partial<T>`：全部变可选。
+
+```
+interface User {
+  name: string
+  age: number
+}
+
+type UpdateUser = Partial<User>
+```
+
+等价于：
+
+```
+{
+  name?: string
+  age?: number
+}
+```
+
+`Pick<T, K>`：挑选部分属性。
+
+```
+type UserName = Pick<User, 'name'>
+```
+
+`Omit<T, K>`：排除部分属性。
+
+```
+type UserWithoutAge = Omit<User, 'age'>
+```
+
+`Record<K, T>`：构造对象类型。
+
+```
+type RoleMap = Record<string, number>
+```
+
+等价于：
+
+```
+{
+  [key: string]: number
+}
+```
+
+`Required<T>`：全部变必填。
+
+```
+type FullUser = Required<User>
+```
+
+---
+
+**13. 你结合项目可以怎么说**
+
+你可以在面试中这样描述你项目里的 TS：
+
+> 在 mianshiwang 项目的后端中，我使用 NestJS，它本身是基于 TypeScript 的。项目里 Controller、Service、Module 都是 class，并且通过装饰器声明路由、依赖注入和模块关系，比如 `@Controller`、`@Get`、`@Post`、`@Injectable`。
+> 
+> 对接口入参，我会用 DTO class 描述数据结构，并结合 `class-validator` 做运行时参数校验。TypeScript 本身只能在编译阶段检查类型，不能保证用户真实请求的数据一定合法，所以后端仍然需要运行时校验。
+> 
+> 在接口返回和业务数据结构上，可以用 interface/type 描述模型，用泛型封装统一响应结构，比如 `ApiResponse<T>`，这样能让代码提示更清晰，也能减少字段写错、类型不一致的问题。
