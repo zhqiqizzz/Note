@@ -16331,3 +16331,536 @@ type FullUser = Required<User>
 > 对接口入参，我会用 DTO class 描述数据结构，并结合 `class-validator` 做运行时参数校验。TypeScript 本身只能在编译阶段检查类型，不能保证用户真实请求的数据一定合法，所以后端仍然需要运行时校验。
 > 
 > 在接口返回和业务数据结构上，可以用 interface/type 描述模型，用泛型封装统一响应结构，比如 `ApiResponse<T>`，这样能让代码提示更清晰，也能减少字段写错、类型不一致的问题。
+
+# Nestjs
+
+**1. NestJS 是什么**
+
+NestJS 是一个基于 Node.js 的后端框架，底层默认用 Express，也可以切换 Fastify。
+
+它的特点是：
+
+```
+使用 TypeScript
+面向模块化
+大量使用装饰器
+内置依赖注入
+结构类似 Angular
+适合写企业级后端服务
+```
+
+面试可以说：
+
+> NestJS 是一个基于 TypeScript 的 Node 后端框架，它通过 Module、Controller、Service 分层组织代码，使用装饰器声明路由、依赖注入和各种元信息，让后端项目结构更清晰，更适合中大型项目维护。
+
+---
+
+**2. NestJS 的核心结构**
+
+一般有三层：
+
+```
+Module：模块，负责组织代码
+Controller：控制器，负责接收请求
+Service：服务，负责业务逻辑
+```
+
+例如用户模块：
+
+```
+user.module.ts
+user.controller.ts
+user.service.ts
+dto/create-user.dto.ts
+```
+
+---
+
+**Module 是什么**
+
+Module 用来组织一组相关功能。
+
+```
+import { Module } from '@nestjs/common'
+import { UserController } from './user.controller'
+import { UserService } from './user.service'
+
+@Module({
+  controllers: [UserController],
+  providers: [UserService],
+  exports: [UserService]
+})
+export class UserModule {}
+```
+
+解释：
+
+```
+controllers: [UserController]
+```
+
+表示这个模块有哪些控制器。
+
+```
+providers: [UserService]
+```
+
+表示这个模块有哪些可以被依赖注入的服务。
+
+```
+exports: [UserService]
+```
+
+表示把 `UserService` 暴露给其他模块使用。
+
+面试可以说：
+
+> Module 是 NestJS 的组织单元，用来把相关 Controller、Service、Provider 聚合在一起。一个业务领域通常对应一个 Module，比如用户模块、题目模块、评论模块。
+
+---
+
+**Controller 是什么**
+
+Controller 负责处理 HTTP 请求。
+
+```
+import { Controller, Get, Post, Body, Param } from '@nestjs/common'
+import { UserService } from './user.service'
+import { CreateUserDto } from './dto/create-user.dto'
+
+@Controller('users')
+export class UserController {
+  constructor(private readonly userService: UserService) {}
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.userService.findOne(id)
+  }
+
+  @Post()
+  create(@Body() dto: CreateUserDto) {
+    return this.userService.create(dto)
+  }
+}
+```
+
+解释：
+
+```
+@Controller('users')
+```
+
+表示路由前缀是：
+
+```
+/users
+```
+
+```
+@Get(':id')
+```
+
+表示处理：
+
+```
+GET /users/:id
+```
+
+```
+@Post()
+```
+
+表示处理：
+
+```
+POST /users
+```
+
+```
+@Param('id')
+```
+
+取路径参数。
+
+```
+@Body()
+```
+
+取请求体。
+
+面试可以说：
+
+> Controller 负责接收请求、解析参数、调用 Service，并返回响应。它不应该写复杂业务逻辑，业务逻辑应该放到 Service。
+
+---
+
+**Service 是什么**
+
+Service 负责业务逻辑。
+
+```
+import { Injectable } from '@nestjs/common'
+import { CreateUserDto } from './dto/create-user.dto'
+
+@Injectable()
+export class UserService {
+  private users = []
+
+  findOne(id: string) {
+    return this.users.find(user => user.id === id)
+  }
+
+  create(dto: CreateUserDto) {
+    const user = {
+      id: Date.now().toString(),
+      ...dto
+    }
+
+    this.users.push(user)
+
+    return user
+  }
+}
+```
+
+```
+@Injectable()
+```
+
+表示这个类可以被 Nest 的依赖注入容器管理。
+
+Controller 里：
+
+```
+constructor(private readonly userService: UserService) {}
+```
+
+Nest 会自动创建并注入 `UserService` 实例。
+
+---
+
+**3. 请求在 NestJS 中怎么流转**
+
+一次请求大概经过：
+
+```
+客户端请求
+  ↓
+Middleware 中间件
+  ↓
+Guard 守卫
+  ↓
+Interceptor 拦截器前置逻辑
+  ↓
+Pipe 管道
+  ↓
+Controller
+  ↓
+Service
+  ↓
+Interceptor 拦截器后置逻辑
+  ↓
+Exception Filter 异常过滤器
+  ↓
+返回响应
+```
+
+你不一定要背全，但要知道几个核心角色。
+
+---
+
+**Middleware 中间件**
+
+中间件在路由处理前执行，类似 Express 中间件。
+
+常用于：
+
+```
+日志
+请求记录
+简单鉴权
+解析请求
+```
+
+```
+export function logger(req, res, next) {
+  console.log(req.method, req.url)
+  next()
+}
+```
+
+---
+
+**Guard 守卫**
+
+Guard 主要负责判断请求能不能继续。
+
+常用于：
+
+```
+登录校验
+权限校验
+角色控制
+```
+
+```
+@Injectable()
+export class AuthGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest()
+    return Boolean(request.user)
+  }
+}
+```
+
+使用：
+
+```
+@UseGuards(AuthGuard)
+@Get('profile')
+getProfile() {}
+```
+
+面试可以说：
+
+> Guard 更适合做权限判断，它决定当前请求是否有资格进入 Controller。
+
+---
+
+**Pipe 管道**
+
+Pipe 主要做两件事：
+
+```
+参数转换
+参数校验
+```
+
+比如：
+
+```
+@Get(':id')
+findOne(@Param('id', ParseIntPipe) id: number) {
+  return id
+}
+```
+
+`ParseIntPipe` 会把字符串 id 转成 number，如果转换失败就抛异常。
+
+DTO 校验也靠 Pipe：
+
+```
+app.useGlobalPipes(new ValidationPipe())
+```
+
+然后：
+
+```
+export class CreateUserDto {
+  @IsString()
+  name: string
+
+  @IsNumber()
+  age: number
+}
+```
+
+当请求进来时，Pipe 会校验 body 是否符合 DTO。
+
+面试可以说：
+
+> Pipe 常用于请求参数的转换和校验，比如把 path 参数转成 number，或者结合 DTO 和 class-validator 校验请求体。
+
+---
+
+**Interceptor 拦截器**
+
+Interceptor 可以在 Controller 前后包一层逻辑。
+
+常用于：
+
+```
+统一响应格式
+日志统计
+耗时统计
+缓存
+转换返回数据
+```
+
+比如统一响应：
+
+```
+@Injectable()
+export class TransformInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler) {
+    return next.handle().pipe(
+      map(data => ({
+        code: 0,
+        message: 'success',
+        data
+      }))
+    )
+  }
+}
+```
+
+面试可以说：
+
+> Interceptor 可以在请求进入 Controller 前后执行逻辑，适合做统一响应包装、日志、缓存、性能统计等。
+
+---
+
+**Exception Filter 异常过滤器**
+
+用来统一处理异常。
+
+```
+@Catch(HttpException)
+export class HttpExceptionFilter implements ExceptionFilter {
+  catch(exception: HttpException, host: ArgumentsHost) {
+    const response = host.switchToHttp().getResponse()
+    const status = exception.getStatus()
+
+    response.status(status).json({
+      code: status,
+      message: exception.message
+    })
+  }
+}
+```
+
+面试可以说：
+
+> Exception Filter 用来统一捕获和格式化异常响应，避免每个 Controller 里重复 try/catch。
+
+---
+
+**4. DTO 是什么**
+
+DTO 全称：
+
+```
+Data Transfer Object
+```
+
+数据传输对象。
+
+用于描述请求体或响应数据结构。
+
+```
+export class CreateQuestionDto {
+  @IsString()
+  title: string
+
+  @IsString()
+  content: string
+
+  @IsArray()
+  tags: string[]
+}
+```
+
+Controller：
+
+```
+@Post()
+create(@Body() dto: CreateQuestionDto) {
+  return this.questionService.create(dto)
+}
+```
+
+DTO 的作用：
+
+```
+约束数据结构
+配合 class-validator 做参数校验
+让接口入参更清晰
+提升 TS 类型提示
+```
+
+注意：
+
+> TypeScript 类型只在编译阶段生效，运行时会被擦除，所以后端要用 class-validator 这类库做运行时校验。
+
+---
+
+**5. 依赖注入 DI 是什么**
+
+依赖注入是 NestJS 很核心的机制。
+
+不用 DI 时：
+
+```
+class UserController {
+  private userService = new UserService()
+}
+```
+
+这样 Controller 自己创建 Service，耦合度高，不方便测试和替换。
+
+NestJS 里：
+
+```
+@Controller('users')
+export class UserController {
+  constructor(private readonly userService: UserService) {}
+}
+```
+
+`UserService` 由 Nest 容器创建，再注入给 Controller。
+
+好处：
+
+```
+降低耦合
+方便复用
+方便测试 mock
+生命周期由框架管理
+```
+
+面试可以说：
+
+> 依赖注入就是对象不自己 new 依赖，而是由框架容器负责创建和注入。NestJS 通过 `@Injectable`、Module providers 和构造函数参数类型来完成依赖注入。
+
+---
+
+**6. mianshiwang 项目你可以怎么讲**
+
+你可以这样组织：
+
+> 我这个项目后端采用 NestJS + TypeScript。整体是按模块拆分的，比如用户、题目、评论等业务会各自有 Module、Controller、Service。Controller 负责接收 HTTP 请求和获取参数，Service 负责具体业务逻辑，比如查询数据库、创建记录、更新数据等。
+> 
+> NestJS 里大量使用装饰器，比如 `@Controller` 声明控制器和路由前缀，`@Get`、`@Post` 声明接口方法，`@Body`、`@Param` 获取请求参数，`@Injectable` 让 Service 可以被依赖注入。
+> 
+> 对接口入参，我会用 DTO 描述请求数据结构，结合 ValidationPipe 和 class-validator 做运行时校验。因为 TypeScript 类型在编译后会被擦除，不能保证真实请求数据合法，所以后端必须做运行时校验。
+> 
+> 另外，Nest 的 Guard 可以做登录和权限校验，Interceptor 可以做统一响应格式、日志和耗时统计，Exception Filter 可以统一处理异常返回。这样可以让 Controller 保持简洁，把通用逻辑抽到框架层统一处理。
+
+---
+
+**7. 面试最可能问你的 NestJS 问题**
+
+你重点准备这些：
+
+1. NestJS 的 Module、Controller、Service 分别负责什么？
+2. NestJS 为什么适合 TypeScript？
+3. 装饰器在 NestJS 中有什么作用？
+4. 什么是依赖注入？
+5. DTO 是什么？为什么需要 DTO？
+6. TS 类型和运行时参数校验有什么区别？
+7. Pipe、Guard、Interceptor、Middleware、Filter 分别做什么？
+8. Controller 里为什么不建议写复杂业务逻辑？
+9. NestJS 请求生命周期大致是什么？
+10. 你的项目里后端接口是怎么组织的？
+
+---
+
+**8. 一段完整面试回答**
+
+如果面试官问：**你项目后端为什么用 NestJS？**
+
+可以答：
+
+> 因为 NestJS 是一个基于 TypeScript 的 Node 后端框架，项目结构比较规范，适合按业务模块拆分。它通过 Module、Controller、Service 分层组织代码，Controller 处理请求，Service 负责业务逻辑，Module 负责聚合依赖。相比直接用 Express，Nest 的依赖注入、装饰器、DTO 校验、Guard、Interceptor、Filter 这些机制更适合中大型项目维护。
+> 
+> 在我的项目里，我主要用 Controller 定义接口路由，用 Service 处理业务逻辑，用 DTO 描述接口入参，并结合 ValidationPipe 做参数校验。TypeScript 提供了编译阶段的类型检查和更好的代码提示，而 DTO 校验可以保证运行时真实请求数据合法。这样整体代码结构会更清晰，也更容易扩展。
