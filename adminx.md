@@ -45,6 +45,26 @@ request.cancelAllRequests();
 request.cancelAllRequests();
 userStore.clear();
 ```
+
+5、主题色问题，ant design 使用的是用户选择的颜色生成的 map token 颜色对应，但是自定义的css 变量 / 组件 走的是 ant design 的默认seed，会导致与用户选择的不一致。
+
+在调用算法前，把当前主色合并进 Seed Token：
+
+```js
+const cssVars = () => {
+  const seed = {
+	// 重点仅替换掉colorPrimary，其他参数使用默认
+    ...defaultSeed,
+    colorPrimary: primaryColor.value,
+    borderRadius: 5.8,
+  };
+
+  const mapToken =
+    currentTheme.value === 'dark'
+      ? darkAlgorithm(seed)
+      : defaultAlgorithm(seed);
+};
+```
 ### 面试
 
 面试官问“为什么这样设计、遇到什么边界问题”，本质上不是让你背源码，而是判断你能否从需求、约束、方案权衡、异常场景和验证方式完整思考系统。
