@@ -65,6 +65,33 @@ const cssVars = () => {
       : defaultAlgorithm(seed);
 };
 ```
+
+5、FOUC（首屏闪烁），应在head的里面设置内联script
+
+实际顺序：
+
+```
+1. 解析html和head
+2. 创建body
+3. 遇到主题内联script
+4. 暂停HTML解析
+5. 读取localStorage
+6. 设置html变量和body背景
+7. script结束
+8. 继续解析
+9. 创建div#app
+10. 遇到module script
+11. 获取并执行main.ts模块图
+12. main.ts导入CSS、Vue、Router、Pinia
+13. 创建Vue应用
+14. App.vue执行setup
+15. useThemeStore()创建主题Store
+16. Store的immediate watch执行applyTheme()
+17. 写入完整CSS变量
+18. ConfigProvider获得themeConfig
+19. Vue渲染路由页面
+20. 浏览器绘制最终界面
+```
 ### 面试
 
 面试官问“为什么这样设计、遇到什么边界问题”，本质上不是让你背源码，而是判断你能否从需求、约束、方案权衡、异常场景和验证方式完整思考系统。
