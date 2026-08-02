@@ -75,10 +75,10 @@
 
 ### 4. 宽高比相关
 
-|特性|含义|示例|
-|---|---|---|
-|`aspect-ratio`|视口宽高比|`(aspect-ratio: 16/9)`（标准宽屏）|
-|`min-aspect-ratio` / `max-aspect-ratio`|最小 / 最大宽高比|`(min-aspect-ratio: 16/9)`（宽屏及以上）|
+| 特性                                      | 含义         | 示例                                |
+| --------------------------------------- | ---------- | --------------------------------- |
+| `aspect-ratio`                          | 视口宽高比      | `(aspect-ratio: 16/9)`（标准宽屏）      |
+| `min-aspect-ratio` / `max-aspect-ratio` | 最小 / 最大宽高比 | `(min-aspect-ratio: 16/9)`（宽屏及以上） |
 
 ## 五、逻辑运算符
 
