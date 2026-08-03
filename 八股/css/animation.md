@@ -9,11 +9,11 @@ animation：按照关键帧自己播放一段动画
 
 **1. 最基础例子：盒子左右移动**
 
-```
+```vue
 <div class="box"></div>
 ```
 
-```
+```css
 .box {
   width: 80px;
   height: 80px;
@@ -58,11 +58,11 @@ to：结束状态
 
 如果动画不只是起点和终点，可以用百分比。
 
-```
+```vue
 <div class="ball"></div>
 ```
 
-```
+```css
 .ball {
   width: 60px;
   height: 60px;
