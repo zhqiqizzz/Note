@@ -1,5 +1,27 @@
 `animation` 是 CSS 里更完整的动画系统。和 `transition` 不同，`transition` 需要“状态变化”触发，比如 `:hover`；而 `animation` 可以自己按关键帧运行。
 
+一句话总结：
+
+```
+animation = @keyframes 定义过程 + animation 应用到元素。
+```
+
+你只要记住这个结构：
+
+```css
+.box {
+  animation: 动画名 持续时间 速度曲线 播放次数 方向 填充模式;
+}
+
+@keyframes 动画名 {
+  0% {}
+  50% {}
+  100% {}
+}
+```
+
+就能写出大部分 CSS 动画。
+
 简单说：
 
 ```
@@ -99,7 +121,7 @@ to：结束状态
 
 完整写法：
 
-```
+```css
 .box {
   animation-name: move;
   animation-duration: 2s;
@@ -114,7 +136,7 @@ to：结束状态
 
 简写：
 
-```
+```css
 .box {
   animation: move 2s ease 0.5s infinite alternate both;
 }
@@ -137,7 +159,7 @@ animation-play-state：播放或暂停
 
 播放一次：
 
-```
+```css
 .box {
   animation: move 2s ease 1;
 }
@@ -145,7 +167,7 @@ animation-play-state：播放或暂停
 
 播放三次：
 
-```
+```css
 .box {
   animation: move 2s ease 3;
 }
@@ -153,7 +175,7 @@ animation-play-state：播放或暂停
 
 无限循环：
 
-```
+```css
 .box {
   animation: move 2s ease infinite;
 }
@@ -161,7 +183,7 @@ animation-play-state：播放或暂停
 
 **5. 播放方向 animation-direction**
 
-```
+```css
 .box {
   animation: move 2s ease infinite alternate;
 }
@@ -178,7 +200,7 @@ alternate-reverse：奇数次反向，偶数次正向
 
 `alternate` 很常用，比如左右摇摆、呼吸效果。
 
-```
+```css
 .box {
   animation: swing 1s ease-in-out infinite alternate;
 }
@@ -198,7 +220,7 @@ alternate-reverse：奇数次反向，偶数次正向
 
 默认情况下，动画结束后元素会回到原始样式。
 
-```
+```css
 .box {
   animation: fadeIn 1s ease;
 }
@@ -218,7 +240,7 @@ alternate-reverse：奇数次反向，偶数次正向
 
 常用：
 
-```
+```css
 .box {
   animation: fadeIn 1s ease forwards;
 }
@@ -237,7 +259,7 @@ both：同时具备 forwards 和 backwards
 
 例子：
 
-```
+```css
 .card {
   opacity: 0;
   transform: translateY(20px);
@@ -256,11 +278,11 @@ both：同时具备 forwards 和 backwards
 
 **7. 暂停和播放 animation-play-state**
 
-```
+```css
 <div class="loader"></div>
 ```
 
-```
+```css
 .loader {
   width: 48px;
   height: 48px;
@@ -285,7 +307,7 @@ both：同时具备 forwards 和 backwards
 
 **8. 多个动画同时使用**
 
-```
+```css
 .box {
   animation:
     move 2s ease infinite alternate,
@@ -317,11 +339,11 @@ both：同时具备 forwards 和 backwards
 
 **9. 常见加载动画**
 
-```
+```vue
 <div class="spinner"></div>
 ```
 
-```
+```css
 .spinner {
   width: 40px;
   height: 40px;
@@ -548,24 +570,3 @@ padding
 }
 ```
 
-一句话总结：
-
-```
-animation = @keyframes 定义过程 + animation 应用到元素。
-```
-
-你只要记住这个结构：
-
-```
-.box {
-  animation: 动画名 持续时间 速度曲线 播放次数 方向 填充模式;
-}
-
-@keyframes 动画名 {
-  0% {}
-  50% {}
-  100% {}
-}
-```
-
-就能写出大部分 CSS 动画。
