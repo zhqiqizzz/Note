@@ -79,16 +79,16 @@
 
 除了根元素 `<html>`（默认形成），以下情况均会**隐式或显式**创建新的堆叠上下文：
 
-|触发条件|说明|
-|---|---|
-|`position: absolute/relative` + `z-index` 非 `auto`|显式设置 `z-index` 时触发|
-|`position: fixed/sticky`|无论 `z-index` 是否为 `auto`，均触发|
-|`flex`/`grid` 容器的子元素 + `z-index` 非 `auto`|子元素需是 flex/grid 项，且 `z-index` 不为 `auto`|
-|`opacity < 1`|元素透明度小于 1 时触发（如 `opacity: 0.9`）|
-|`transform` 非 `none`|如 `transform: translate(10px)`|
-|`filter` 非 `none`|如 `filter: blur(5px)`|
-|`perspective` 非 `none`|3D 变换相关属性|
-|`isolation: isolate`|显式强制创建堆叠上下文（常用技巧）|
+| 触发条件                                               | 说明                                      |
+| -------------------------------------------------- | --------------------------------------- |
+| `position: absolute/relative` + `z-index` 非 `auto` | 显式设置 `z-index` 时触发                      |
+| `position: fixed/sticky`                           | 无论 `z-index` 是否为 `auto`，均触发             |
+| `flex`/`grid` 容器的子元素 + `z-index` 非 `auto`          | 子元素需是 flex/grid 项，且 `z-index` 不为 `auto` |
+| `opacity < 1`                                      | 元素透明度小于 1 时触发（如 `opacity: 0.9`）         |
+| `transform` 非 `none`                               | 如 `transform: translate(10px)`          |
+| `filter` 非 `none`                                  | 如 `filter: blur(5px)`                   |
+| `perspective` 非 `none`                             | 3D 变换相关属性                               |
+| `isolation: isolate`                               | 显式强制创建堆叠上下文（常用技巧）                       |
 
 ### 3. 堆叠上下文内的层级顺序（从下到上）
 
