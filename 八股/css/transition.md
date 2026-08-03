@@ -2,11 +2,11 @@
 
 **基础例子**
 
-```
+```vue
 <button class="btn">提交</button>
 ```
 
-```
+```css
 .btn {
   background: #2563eb;
   color: white;
@@ -41,13 +41,13 @@ transition: background 0.3s ease;
 
 **多个属性一起过渡**
 
-```
+```vue
 <div class="card">
   商品卡片
 </div>
 ```
 
-```
+```css
 .card {
   width: 180px;
   padding: 24px;
@@ -76,7 +76,7 @@ transition: background 0.3s ease;
 
 **transition 的完整写法**
 
-```
+```css
 .box {
   transition-property: width;
   transition-duration: 0.3s;
@@ -87,7 +87,7 @@ transition: background 0.3s ease;
 
 等价简写：
 
-```
+```css
 .box {
   transition: width 0.3s ease 0.1s;
 }
@@ -104,7 +104,7 @@ transition-delay：延迟多久开始
 
 **常见速度曲线**
 
-```
+```css
 .box {
   transition: transform 0.3s linear;
 }
@@ -120,17 +120,17 @@ ease-in-out：开始和结束都慢
 
 实际 UI 里，常用：
 
-```
+```css
 transition: transform 0.2s ease, opacity 0.2s ease;
 ```
 
 **延迟过渡**
 
-```
+```vue
 <div class="tip">提示内容</div>
 ```
 
-```
+```css
 .tip {
   opacity: 0;
   transform: translateY(8px);
@@ -171,7 +171,7 @@ background-image
 
 比如这个不会平滑：
 
-```
+```css
 .menu {
   display: none;
   transition: display 0.3s ease;
@@ -186,7 +186,7 @@ background-image
 
 可以改用：
 
-```
+```css
 .menu {
   opacity: 0;
   transform: translateY(-8px);
@@ -203,7 +203,7 @@ background-image
 
 **常见展开示例**
 
-```
+```vue
 <button class="toggle">菜单</button>
 <div class="panel">
   <p>首页</p>
@@ -212,7 +212,7 @@ background-image
 </div>
 ```
 
-```
+```css
 .panel {
   max-height: 0;
   overflow: hidden;
