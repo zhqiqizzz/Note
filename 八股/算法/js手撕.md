@@ -207,6 +207,9 @@ function promiseAll(promises) {
 function myNew(constructor, ...args) {
   // 1. 创建一个空对象，并将其原型指向构造函数的 prototype
   const obj = Object.create(constructor.prototype);
+  // 等价于：
+  // const obj = {};
+  // obj.__proto__ = constructor.prototype;
   // 2. 执行构造函数，并将 this 绑定到这个新对象上
   const res = constructor.apply(obj, args);
   // 3. 如果构造函数返回的是对象，则返回该对象；否则返回新创建的 obj
