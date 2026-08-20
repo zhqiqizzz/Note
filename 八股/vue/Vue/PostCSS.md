@@ -21,14 +21,14 @@ PostCSS 的工作流程可以概括为以下三个步骤：
 
 PostCSS 的强大在于其丰富的生态系统，以下是它最常见的应用场景：
 
-|功能场景|代表插件|作用描述|
-|---|---|---|
-|**浏览器兼容性**|`autoprefixer`|自动根据 `.browserslist` 配置，为 CSS 属性添加厂商前缀（如 `-webkit-`, `-moz-`）。这是最常用的功能。|
-|**代码压缩**|`cssnano`|类似 Terser 之于 JS，用于压缩和优化 CSS 体积，移除无用空格、注释，合并规则等。|
-|**现代语法支持**|`postcss-preset-env`|允许你使用未来的 CSS 语法（如 `:has()`, 嵌套语法等），并将其转换为当前浏览器支持的代码。|
-|**样式模块化**|`postcss-modules`|实现 CSS Modules 方案，将类名转换为唯一的哈希值，避免全局样式冲突。|
-|**框架集成**|`vue-style-loader` / `unplugin-auto-import`|在 Vue、React 等框架中处理 `<style scoped>`、CSS 变量注入等特定逻辑。|
-|**Linting/检查**|`stylelint`|虽然 Stylelint 是独立工具，但它常作为 PostCSS 插件运行，用于检查 CSS 代码规范和错误。|
+| 功能场景           | 代表插件                                        | 作用描述                                                                    |
+| -------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
+| **浏览器兼容性**     | `autoprefixer`                              | 自动根据 `.browserslist` 配置，为 CSS 属性添加厂商前缀（如 `-webkit-`, `-moz-`）。这是最常用的功能。 |
+| **代码压缩**       | `cssnano`                                   | 类似 Terser 之于 JS，用于压缩和优化 CSS 体积，移除无用空格、注释，合并规则等。                         |
+| **现代语法支持**     | `postcss-preset-env`                        | 允许你使用未来的 CSS 语法（如 `:has()`, 嵌套语法等），并将其转换为当前浏览器支持的代码。                    |
+| **样式模块化**      | `postcss-modules`                           | 实现 CSS Modules 方案，将类名转换为唯一的哈希值，避免全局样式冲突。                                |
+| **框架集成**       | `vue-style-loader` / `unplugin-auto-import` | 在 Vue、React 等框架中处理 `<style scoped>`、CSS 变量注入等特定逻辑。                      |
+| **Linting/检查** | `stylelint`                                 | 虽然 Stylelint 是独立工具，但它常作为 PostCSS 插件运行，用于检查 CSS 代码规范和错误。                 |
 ### 3. 与预处理器 (Sass/Less) 的区别
 
 很多初学者容易混淆 PostCSS 与 Sass/Less，它们的定位不同：
