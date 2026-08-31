@@ -153,7 +153,49 @@ Agent 不直接生成题目，只生成一个受控指令：
 
 首版可以接受，因为面试题通常不长。
 
-如果未来输出长报告，可以改成：
+### `waiting` 为什么是重要的终止事件
+
+前端不是根据：
+
+```
+question.isStreaming === false
+```
+
+单独判断用户能否回答，而是等待：
+
+```
+{
+  "type": "waiting"
+}
+```
+
+收到后：
+
+```
+interviewStore.interviewEventType =
+  'waiting';
+
+interviewStore.completeTurn();
+```
+
+`completeTurn()` 清除：
+
+```
+this.pendingTurn = null;
+```
+
+这代表：
+
+```
+上一 turnId 已完成
+用户下一次回答需要创建新 turnId
+```
+
+如果在问题还没保存完成前就清除 `pendingTurn`，网络失败后前端可能生成新的 `turnId`，导致重复推进。
+
+因此：
+
+> `waiting` 不只是 UI 文案，它是当前回合提交成功的业务确认。
 ### 面试时的完整回答模板
 
 > 我没有让大模型直接控制面试流程，而是把 Agent 拆成回答评估、策略决策和问题生成三个阶段。评估结果与决策结果都通过 Zod 做运行时校验，模型输出非法 JSON 时只进行一次格式修复。
