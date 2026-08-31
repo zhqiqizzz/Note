@@ -55,6 +55,34 @@ enforceAgentPolicy(
 规则四：追问次数越界
 规则五：模型选择未知维度
 
+### 最终决策如何控制下一题 Prompt
+
+Agent 不直接生成题目，只生成一个受控指令：
+
+```
+{
+  "action": "follow_up",
+  "dimension": "SSE",
+  "difficulty": "medium",
+  "reasonCode": "insufficient_depth",
+  "instruction": "针对候选人刚才回答中的缺口继续追问，只提出一个问题。"
+}
+```
+
+如果是切换维度：
+
+```
+{
+  "action": "new_dimension",
+  "dimension": "MongoDB",
+  "difficulty": "hard",
+  "reasonCode": "coverage_gap",
+  "instruction": "切换到尚未覆盖的能力维度，只提出一个问题。"
+}
+```
+
+这个 JSON 被序列化成 `agentDirective`，传给问题生成 Prompt。
+
 ### 你现在应该能说出的三分钟版本
 
 > 用户提交回答时，前端会为当前回合生成 `turnId` 并保存在 Pinia 中，网络失败重试时复用同一个 ID。请求经过 JWT Guard 后，Controller 建立 SSE 连接，并通过 RxJS Subject 把 Service 产生的阶段事件转成 SSE 数据。
