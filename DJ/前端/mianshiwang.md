@@ -193,6 +193,57 @@ this.pendingTurn = null;
 
 如果在问题还没保存完成前就清除 `pendingTurn`，网络失败后前端可能生成新的 `turnId`，导致重复推进。
 
+### AbortController 的完整传递链
+
+Controller 创建：
+
+```
+const abortController =
+  new AbortController();
+```
+
+向下传递：
+
+```
+Controller
+→ InterviewService
+→ InterviewAgentService
+→ InterviewAIService
+→ LangChain model.invoke / chain.stream
+```
+
+模型调用：
+
+```
+model.invoke(
+  prompt,
+  signal ? { signal } : undefined,
+);
+```
+
+流式调用：
+
+```
+chain.stream(
+  params,
+  signal ? { signal } : undefined,
+);
+```
+
+业务循环中还主动检查：
+
+```
+if (signal?.aborted) {
+  throw new Error(
+    'INTERVIEW_STREAM_ABORTED'
+  );
+}
+```
+
+为什么两层都检查？
+
+- 模型 SDK 支持 AbortSignal 时，底层网络请求直接停止；
+- SDK 没有及时响应时，业务循环仍可以主动退出。
 
 
 > `waiting` 不只是 UI 文案，它是当前回合提交成功的业务确认。
