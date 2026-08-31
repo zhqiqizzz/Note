@@ -287,6 +287,33 @@ Service 继续运行
 
 只做 `abort()` 也不够，因为 RxJS 订阅和 Response 资源仍要清理。
 
+### 一次完整 SSE 时间线
+
+```
+00ms  前端提交 answer + turnId
+10ms  JWT 校验通过
+15ms  SSE connected
+20ms  Redis 锁获取成功
+35ms  回答保存 MongoDB
+40ms  agent_evaluating
+950ms Agent 评估完成
+960ms agent_deciding
+1420ms Agent 决策完成
+1430ms thinking
+1600ms question: "请"
+1670ms question: "请说明"
+1750ms question: "请说明 SSE"
+2400ms question 完成
+2450ms reference_answer 开始
+3300ms reference_answer 完成
+3350ms MongoDB 检查点保存
+3360ms waiting
+3370ms Subject complete
+3380ms res.end
+```
+
+把这条
+
 > `waiting` 不只是 UI 文案，它是当前回合提交成功的业务确认。
 ### 面试时的完整回答模板
 
