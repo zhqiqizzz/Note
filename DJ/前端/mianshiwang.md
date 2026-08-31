@@ -570,6 +570,15 @@ POST /payment/order/status
 | 完整成功 | `success`     | 已增加  | 已存在  |
 | 重复回调 | `success`     | 不变   | 不重复  |
 
+项目中涉及四类容易混淆的数据：
+
+|数据模型|负责什么|
+|---|---|
+|`User`|当前余额和剩余次数|
+|`ConsumptionRecord`|一次 AI 服务从开始到完成/失败的过程|
+|`UserTransaction`|用户余额或权益的每一次变化|
+|`PaymentRecord`|第三方支付订单状态|
+
 ### 面试时的完整回答模板
 
 > 创建订单时，前端只提交套餐 ID，金额和权益由后端套餐配置决定，并保存到本地订单快照。用户支付后，支付回调和前端主动查询都可能发现成功，因此二者统一进入 `finalizePaymentSuccess`。
