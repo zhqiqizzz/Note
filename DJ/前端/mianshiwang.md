@@ -312,7 +312,88 @@ Service 继续运行
 3380ms res.end
 ```
 
-> `waiting` 不只是 UI 文案，它是当前回合提交成功的业务确认。
+### Redis 锁不能代替权限校验
+
+锁使用：
+
+```
+lock:interview:<sessionId>
+```
+
+它只能保证：
+
+```
+同一 Session 不被两个请求同时推进
+```
+
+不能保证：
+
+```
+当前用户拥有这个 Session
+```
+
+攻击者拿到其他用户的 `sessionId` 后，也可能尝试获取对应锁。
+
+因此顺序应该理解为：
+
+```
+JWT 确认用户身份
+→ Redis 锁控制并发
+→ Session 归属校验
+→ 执行业务
+```
+
+锁是并发机制，不是授权机制。
+### STS 上传权限如何绑定用户
+
+上传简历时，前端先获取 STS Token。
+
+STS 接口需要 JWT：
+
+```
+JWT 确定 userId
+→ 后端生成用户专属上传目录
+→ STS 只允许写入该目录
+```
+
+例如：
+
+```
+users/user-001/resumes/<uuid>.pdf
+```
+
+用户不能自行指定：
+
+```
+users/user-002/resumes/victim.pdf
+```
+
+上传后，前端只提交：
+
+```
+{
+  "objectKey": "users/user-001/resumes/a.pdf",
+  "mimeType": "application/pdf",
+  "fileSize": 123456
+}
+```
+
+后端再次验证：
+
+```
+objectKey 是否属于当前 userId 目录
+OSS Head 返回的真实大小
+OSS Head 返回的真实类型
+```
+
+这属于：
+
+```
+授权前置约束
++ 上传后再次验证
+```
+
+STS Token 不是“给用户完整 OSS 权限”，而是短时间、最小范围的临时凭证。
 ### 面试时的完整回答模板
 
 > 我没有让大模型直接控制面试流程，而是把 Agent 拆成回答评估、策略决策和问题生成三个阶段。评估结果与决策结果都通过 Zod 做运行时校验，模型输出非法 JSON 时只进行一次格式修复。
