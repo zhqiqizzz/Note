@@ -428,3 +428,13 @@ STS Token 不是“给用户完整 OSS 权限”，而是短时间、最小范�
 > 前端不是简单拼接字符串，而是用事件类型驱动状态机。`waiting` 表示当前回合已经完整持久化，收到它之后才清除前端保存的 `pendingTurn`。如果连接中断，前端保留原来的 `turnId` 和回答，后端通过 AbortController 中止模型流，并将 Agent 状态保存为 `retryable`。
 > 
 > SSE 本身不负责可靠恢复，因为已经发送的 token 不等于已经保存的业务结果。恢复时始终以 MongoDB 中的 `lastCompletedTurnId`、`agentState` 和 `qaList` 为准。报告生成生命周期更长，因此使用 BullMQ 和持久化状态轮询，而不是维持一条长 SSE。
+
+### 面试时的回答模板
+
+> JWT 在项目中只负责身份认证。请求经过 `JwtAuthGuard` 和 `JwtStrategy` 后，后端从验证后的 Payload 中取得 `req.user.userId`，而不是相信前端传入的用户 ID。
+> 
+> 资源授权在 Service 和数据库查询层完成。例如报告、面试会话、订单和简历都会使用 `{ resultId, userId }` 或等价条件查询。这样即使用户拿到其他人的 `resultId`，查询条件中的 `userId` 也不匹配，不会读取或修改其他用户的数据。
+> 
+> 对更新操作我同样要求携带用户范围，因为查询漏掉 `userId` 会造成数据泄露，更新漏掉则可能直接篡改其他用户状态。Redis 锁只解决并发，UUID 只降低枚举概率，CORS 只约束浏览器，它们都不能替代资源归属校验。
+> 
+> 对没有 JWT 的异步链路，例如支付回调和 BullMQ Worker，则分别依赖支付平台签名或 API 进程传递的可信任务上下文，但数据库操作仍携带 `userId` 和业务主键进行范围约束。
