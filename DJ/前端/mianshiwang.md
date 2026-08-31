@@ -724,3 +724,942 @@ POST /payment/order/status
 ## 第六部分：你的价值
 
 > 这个项目中我不只是使用 AI 生成代码，而是形成了一套 AI 辅助开发流程：先让 AI 帮助梳理控制流和数据流，再设计状态机和约束，之后生成实现，由我检查资源归属、并发、失败补偿和测试场景，最后通过构建和自动化测试验证。
+
+
+# 简历上传解析过程
+## 一、先理解 STS 是什么
+
+STS 全称是 Security Token Service。它不是文件存储服务，而是一个“临时授权服务”。
+
+完整关系是：
+
+```
+前端浏览器
+   │
+   │ 1. 请求临时上传凭证
+   ▼
+NestJS 后端
+   │
+   │ 2. 使用服务端密钥向阿里云申请 STS Token
+   ▼
+阿里云 STS
+   │
+   │ 3. 返回临时 AccessKey、Secret、SecurityToken
+   ▼
+NestJS 返回给前端
+   │
+   │ 4. 前端使用临时凭证直传 OSS
+   ▼
+阿里云 OSS
+```
+
+后端不会把自己的永久 AccessKey 暴露给浏览器。前端拿到的只是短期、权限受限的上传凭证。
+
+---
+
+## 二、从用户选择文件开始
+
+### 1. 用户选择本地简历
+
+前端一般通过：
+
+```
+<input
+  type="file"
+  accept=".pdf,.docx"
+  @change="handleFileChange"
+/>
+```
+
+用户选择文件后，浏览器得到一个 `File` 对象：
+
+```
+{
+  name: "张三-前端简历.pdf",
+  type: "application/pdf",
+  size: 1024000,
+  lastModified: 1760000000000
+}
+```
+
+此时文件仍然只存在于用户本地浏览器内存中，还没有上传。
+
+前端首先进行基础校验：
+
+```
+const allowedTypes = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+
+if (!allowedTypes.includes(file.type)) {
+  throw new Error("只支持 PDF 或 DOCX");
+}
+
+if (file.size > 5 * 1024 * 1024) {
+  throw new Error("文件不能超过 5MB");
+}
+```
+
+这里的校验主要是为了提升用户体验，但它不能作为最终安全校验。因为 MIME 类型、文件名、请求参数都可以被伪造，后端还必须重新校验。
+
+---
+
+## 三、前端请求 STS 临时凭证
+
+前端调用：
+
+```
+POST /sts/getStsToken
+Authorization: Bearer <JWT>
+```
+
+请求中通常不需要传文件内容，也不应该传任意外部 URL。
+
+后端从 JWT 中解析当前用户：
+
+```
+const userId = req.user.userId;
+```
+
+然后生成当前用户专属的 OSS 目录：
+
+```
+const objectPrefix = `resumes/${userId}/`;
+```
+
+例如：
+
+```
+resumes/64f123abc/2026/08/31/uuid.pdf
+```
+
+这里的核心安全思想是：
+
+```
+用户 A 只能获得 resumes/userA/ 下的写入权限
+用户 B 只能获得 resumes/userB/ 下的写入权限
+```
+
+后端不能让前端直接传入：
+
+```
+{
+  "prefix": "../../admin/"
+}
+```
+
+否则用户可能利用路径控制其他用户的文件。
+
+---
+
+## 四、后端向阿里云申请 STS
+
+NestJS 的 STS Service 通常负责三件事：
+
+1. 读取服务端环境变量；
+2. 调用阿里云 RAM/STS API；
+3. 构造只允许上传指定目录的临时策略。
+
+服务端保存的是永久密钥：
+
+```
+ALIYUN_ACCESS_KEY_ID=xxx
+ALIYUN_ACCESS_KEY_SECRET=xxx
+ALIYUN_ROLE_ARN=acs:ram::xxx:role/resume-upload-role
+ALIYUN_OSS_BUCKET=xxx
+ALIYUN_OSS_REGION=xxx
+```
+
+这些信息不能发送给前端。
+
+后端向 STS 请求后，得到类似结果：
+
+```
+{
+  "AccessKeyId": "STS.xxxxx",
+  "AccessKeySecret": "xxxxx",
+  "SecurityToken": "xxxxx",
+  "Expiration": "2026-08-31T12:00:00Z"
+}
+```
+
+然后后端通常会再包装一层返回：
+
+```
+{
+  "accessKeyId": "STS.xxxxx",
+  "accessKeySecret": "xxxxx",
+  "securityToken": "xxxxx",
+  "bucket": "mianshiwang-resume",
+  "region": "oss-cn-hangzhou",
+  "expiration": "2026-08-31T12:00:00Z",
+  "keyPrefix": "resumes/64f123abc/"
+}
+```
+
+这里的 `keyPrefix` 不是随便给前端决定的，而是后端根据当前登录用户生成的。
+
+---
+
+## 五、为什么 STS 返回的权限不是永久权限
+
+STS Token 的权限一般需要满足以下限制：
+
+```
+有效期有限，例如 15 分钟
+只能操作指定 Bucket
+只能写入当前用户目录
+只能执行 PutObject
+不能删除其他文件
+不能列出整个 Bucket
+不能读取其他用户文件
+```
+
+权限模型类似：
+
+```
+{
+  "Effect": "Allow",
+  "Action": [
+    "oss:PutObject",
+    "oss:HeadObject"
+  ],
+  "Resource": [
+    "acs:oss:*:*:mianshiwang-resume/resumes/userId/*"
+  ]
+}
+```
+
+实际配置可能由阿里云策略完成，但面试时要讲清楚这个原则：
+
+> STS 的价值不只是“临时密钥”，更重要的是把上传权限限制在时间、用户和对象路径三个维度内。
+
+---
+
+## 六、前端构造 OSS Object Key
+
+拿到 STS 后，前端不能直接使用用户上传的文件名作为完整路径：
+
+```
+const objectKey = `${keyPrefix}${file.name}`;
+```
+
+这种方式存在几个问题：
+
+- 文件名可能包含特殊字符；
+- 同名文件会覆盖；
+- 用户可以尝试构造路径；
+- 文件名可能非常长；
+- 文件名可能带有隐私信息。
+
+更合理的方式是后端或前端生成唯一名称：
+
+```
+const extension = file.name.split(".").pop()?.toLowerCase();
+
+const objectKey =
+  `${keyPrefix}${crypto.randomUUID()}.${extension}`;
+```
+
+例如：
+
+```
+resumes/64f123abc/1f58f9e2-7f52-4c72-a4c5-9a7d1c.pdf
+```
+
+建议数据库额外保存原始展示名称：
+
+```
+{
+  "resumeName": "张三-前端简历.pdf",
+  "objectKey": "resumes/64f123abc/1f58f9e2-7f52-4c72-a4c5-9a7d1c.pdf"
+}
+```
+
+前端展示 `resumeName`，系统内部使用 `objectKey`。
+
+---
+
+## 七、浏览器直传 OSS
+
+前端使用阿里云 OSS SDK，或者使用签名 URL 直接上传：
+
+```
+const client = new OSS({
+  region: token.region,
+  bucket: token.bucket,
+  accessKeyId: token.accessKeyId,
+  accessKeySecret: token.accessKeySecret,
+  stsToken: token.securityToken,
+});
+
+await client.put(objectKey, file);
+```
+
+这一阶段的网络路径是：
+
+```
+浏览器 ───────────────► 阿里云 OSS
+```
+
+而不是：
+
+```
+浏览器 ─► NestJS ─► OSS
+```
+
+这就是“前端直传”。
+
+### 为什么要直传？
+
+如果由后端中转：
+
+```
+浏览器上传 5MB
+       ↓
+NestJS 接收 5MB
+       ↓
+NestJS 再上传 5MB 到 OSS
+```
+
+后端会承担：
+
+- 文件带宽；
+- 请求连接；
+- 内存或临时磁盘；
+- 上传超时；
+- 大文件并发压力。
+
+直传之后：
+
+```
+浏览器 ─► OSS
+NestJS 只负责授权和登记
+```
+
+后端压力明显降低。
+
+---
+
+## 八、OSS 上传成功后，发生了什么
+
+OSS 返回上传成功结果，通常包含：
+
+```
+{
+  "name": "resumes/64f123abc/uuid.pdf",
+  "etag": "\"A1B2C3...\"",
+  "url": "https://bucket.oss-cn-hangzhou.aliyuncs.com/..."
+}
+```
+
+前端不应该把这个完整 URL 当作业务凭证提交给后端。
+
+前端真正需要提交的是：
+
+```
+POST /resumes
+Authorization: Bearer <JWT>
+Content-Type: application/json
+```
+
+```
+{
+  "resumeName": "张三-前端简历.pdf",
+  "objectKey": "resumes/64f123abc/uuid.pdf",
+  "mimeType": "application/pdf",
+  "fileSize": 1024000
+}
+```
+
+这一步的含义是：
+
+> 文件已经存在 OSS，现在通知业务后端：“这是我刚才上传的那份文件，请登记并开始处理。”
+
+---
+
+## 九、后端登记 Resume 记录
+
+后端收到 `POST /resumes` 后，不会直接相信前端传来的信息，而是进行多层校验。
+
+### 1. 校验当前用户身份
+
+从 JWT 获取：
+
+```
+const userId = req.user.userId;
+```
+
+不能使用前端传来的：
+
+```
+{
+  "userId": "other-user-id"
+}
+```
+
+前端不应该拥有决定数据归属的权力。
+
+---
+
+### 2. 校验 Object Key 所属目录
+
+后端检查：
+
+```
+objectKey.startsWith(`resumes/${userId}/`)
+```
+
+如果用户 A 提交：
+
+```
+resumes/userB/abc.pdf
+```
+
+直接拒绝。
+
+这一步用于防止用户利用 OSS Token 或请求参数访问其他人的目录。
+
+---
+
+### 3. 调用 OSS HeadObject 校验真实文件
+
+后端使用服务端 OSS Client 调用：
+
+```
+const metadata = await oss.head(objectKey);
+```
+
+得到 OSS 真实信息：
+
+```
+{
+  "size": 1024000,
+  "contentType": "application/pdf",
+  "etag": "\"A1B2C3\""
+}
+```
+
+然后比较前端声明值：
+
+```
+if (metadata.size !== dto.fileSize) {
+  throw new BadRequestException("文件大小不一致");
+}
+```
+
+还要检查：
+
+```
+真实对象存在
+真实大小不超过 5MB
+真实类型为 PDF 或 DOCX
+文件不是空文件
+对象确实位于当前用户目录
+```
+
+这一步非常重要，因为前端传来的 `mimeType` 和 `fileSize` 都不可信。
+
+---
+
+### 4. 创建数据库记录
+
+数据库中的 Resume 记录可以是：
+
+```
+{
+  "resumeId": "resume_abc123",
+  "userId": "user_001",
+  "resumeName": "张三-前端简历.pdf",
+  "objectKey": "resumes/user_001/uuid.pdf",
+  "mimeType": "application/pdf",
+  "fileSize": 1024000,
+  "status": "uploaded",
+  "parserVersion": "v1",
+  "retryCount": 0,
+  "createdAt": "2026-08-31T10:00:00Z"
+}
+```
+
+注意：
+
+```
+MongoDB 保存的是文件元数据和处理结果
+OSS 保存的是原始文件
+MongoDB 不保存完整原始简历文本
+```
+
+---
+
+## 十、为什么后端不直接保存 resumeURL
+
+旧式设计可能是：
+
+```
+{
+  "resumeURL": "https://xxx.com/resume.pdf"
+}
+```
+
+后端收到 URL 后再下载：
+
+```
+await axios.get(resumeURL);
+```
+
+这种设计有明显风险：
+
+```
+1. 用户可以传入任意外部 URL
+2. 后端可能访问内网地址
+3. 可能触发 SSRF
+4. URL 可能过期
+5. URL 可能指向恶意文件
+6. 无法确认文件属于当前用户
+7. 业务数据依赖外部链接是否长期有效
+```
+
+因此现在应该只接受：
+
+```
+{
+  "objectKey": "resumes/user_001/uuid.pdf"
+}
+```
+
+后端自己根据可信配置访问 OSS。
+
+---
+
+## 十一、上传登记后，投递解析任务
+
+Resume 创建成功后，状态从：
+
+```
+uploaded
+```
+
+变成：
+
+```
+queued
+```
+
+然后投递任务：
+
+```
+await resumeQueue.add(
+  "parse-resume",
+  {
+    resumeId,
+    userId,
+    objectKey,
+    parserVersion: "v1",
+  },
+  {
+    jobId: `${resumeId}:v1`,
+  },
+);
+```
+
+任务中不应该放完整简历文本，也不应该放下载 URL，只放必要定位信息：
+
+```
+interface ResumeParseJob {
+  resumeId: string;
+  userId: string;
+  objectKey: string;
+  parserVersion: "v1";
+}
+```
+
+这样做的好处：
+
+- Redis 中不暴露敏感简历内容；
+- 任务体积很小；
+- Worker 可以根据 `objectKey` 重新读取 OSS；
+- 任务失败后可以安全重试；
+- `resumeId:parserVersion` 可以作为幂等键。
+
+---
+
+## 十二、Worker 如何读取并解析文件
+
+解析 Worker 的逻辑是：
+
+```
+取出任务
+  ↓
+查询 Resume
+  ↓
+校验 resumeId + userId
+  ↓
+状态改为 extracting
+  ↓
+从 OSS 下载 objectKey
+  ↓
+根据 MIME 类型选择解析器
+  ↓
+PDF 使用 PDF Parser
+DOCX 使用 DOCX Parser
+  ↓
+得到纯文本
+  ↓
+清理 PII
+  ↓
+调用 DeepSeek 结构化
+  ↓
+Zod 校验
+  ↓
+保存 structuredData
+  ↓
+状态改为 ready
+```
+
+状态变化：
+
+```
+uploaded
+   ↓
+queued
+   ↓
+extracting
+   ↓
+structuring
+   ↓
+ready
+```
+
+失败时：
+
+```
+extracting / structuring
+          ↓
+        failed
+```
+
+---
+
+## 十三、文件内容到底从哪里来
+
+关键点是：后端不是从 URL 解析，而是通过 `objectKey` 从 OSS 读取对象。
+
+Worker 可能执行类似逻辑：
+
+```
+const object = await oss.get(objectKey);
+const buffer = object.content;
+```
+
+或者：
+
+```
+const stream = await oss.getStream(objectKey);
+```
+
+得到文件二进制内容后，再交给不同解析器：
+
+```
+if (mimeType === "application/pdf") {
+  text = await extractPdfText(buffer);
+}
+
+if (
+  mimeType ===
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+) {
+  text = await extractDocxText(buffer);
+}
+```
+
+得到的文本只在当前任务执行期间存在：
+
+```
+const rawText = extractText(fileBuffer);
+```
+
+它不会长期写入 MongoDB。
+
+---
+
+## 十四、为什么要保留文本哈希
+
+虽然不保存完整文本，但可以保存：
+
+```
+textHash = sha256(cleanedText);
+```
+
+例如：
+
+```
+sha256: 0c7f...a92d
+```
+
+文本哈希可以用于：
+
+- 判断内容是否发生变化；
+- 追踪历史报告使用的是哪一版简历；
+- 排查结构化结果是否来自同一份文本；
+- 防止重复解析；
+- 日志追踪时避免暴露原文。
+
+日志记录：
+
+```
+{
+  "resumeId": "resume_abc123",
+  "textLength": 4820,
+  "textHash": "0c7f...a92d",
+  "stage": "structuring",
+  "durationMs": 4200
+}
+```
+
+不记录：
+
+```
+简历 URL
+手机号
+邮箱
+完整简历文本
+模型 Prompt 原文
+```
+
+---
+
+## 十五、解析完成后的数据结构
+
+模型不会只返回一段自然语言，而是返回标准对象：
+
+```
+{
+  "schemaVersion": "v1",
+  "basicInfo": {
+    "name": "张三",
+    "currentTitle": "前端开发工程师",
+    "yearsOfExperience": 1
+  },
+  "skills": [
+    {
+      "name": "Vue3",
+      "category": "frontend",
+      "proficiency": "熟悉",
+      "evidence": "使用 Vue3 和 Nuxt 开发 AI 面试平台"
+    },
+    {
+      "name": "NestJS",
+      "category": "backend",
+      "proficiency": "熟悉",
+      "evidence": "实现用户鉴权、订单与 AI 服务"
+    }
+  ],
+  "education": [],
+  "workExperiences": [],
+  "projects": [],
+  "certificates": [],
+  "otherSections": [],
+  "warnings": []
+}
+```
+
+然后使用 Zod 校验：
+
+```
+const result = ParsedResumeV1Schema.safeParse(modelOutput);
+
+if (!result.success) {
+  // 进入一次修复重试
+}
+```
+
+第一次返回非法 JSON：
+
+```
+调用模型修复结构
+```
+
+第二次仍然失败：
+
+```
+status = failed
+lastErrorCode = RESUME_STRUCTURING_INVALID
+```
+
+但数据库不保存完整原文。
+
+---
+
+## 十六、前端如何知道解析完成
+
+前端在创建 Resume 后得到：
+
+```
+{
+  "resumeId": "resume_abc123",
+  "status": "queued"
+}
+```
+
+之后轮询：
+
+```
+GET /resumes/resume_abc123
+```
+
+返回：
+
+```
+{
+  "resumeId": "resume_abc123",
+  "resumeName": "张三-前端简历.pdf",
+  "status": "structuring",
+  "parserVersion": "v1"
+}
+```
+
+完成后：
+
+```
+{
+  "resumeId": "resume_abc123",
+  "status": "ready",
+  "structuredData": {
+    "schemaVersion": "v1",
+    "skills": []
+  }
+}
+```
+
+前端只有在：
+
+```
+resume.status === "ready"
+```
+
+时，才允许进入押题或模拟面试。
+
+如果状态是：
+
+```
+uploaded
+queued
+extracting
+structuring
+```
+
+前端应该展示处理中，而不是直接发起 AI 面试。
+
+---
+
+## 十七、面试开始时如何复用简历
+
+前端不再提交完整简历文本或 URL，而是：
+
+```
+{
+  "resumeId": "resume_abc123",
+  "company": "某互联网公司",
+  "positionName": "前端开发工程师",
+  "jd": "负责 Vue、React、工程化相关工作"
+}
+```
+
+后端查询：
+
+```
+ResumeModel.findOne({
+  resumeId,
+  userId: currentUserId,
+  status: "ready",
+});
+```
+
+这个查询同时完成：
+
+```
+1. 简历是否存在
+2. 简历是否属于当前用户
+3. 简历是否解析完成
+```
+
+然后读取：
+
+```
+resume.structuredData
+```
+
+再放入 Prompt：
+
+```
+const params = {
+  company,
+  positionName,
+  jd,
+  resumeProfileJson: JSON.stringify(resume.structuredData),
+};
+```
+
+这样押题和模拟面试使用的就是同一份结构化简历。
+
+---
+
+## 十八、为什么结果还要保存简历快照
+
+假设用户后来修改或删除了简历，如果历史报告只保存：
+
+```
+{
+  "resumeId": "resume_abc123"
+}
+```
+
+那么以后重新查看报告时，可能找不到当时使用的简历版本。
+
+所以在创建面试结果时保存：
+
+```
+{
+  "resumeProfileSnapshot": {
+    "schemaVersion": "v1",
+    "skills": [],
+    "projects": []
+  },
+  "resumeParserVersion": "v1",
+  "resumeTextHash": "0c7f...a92d"
+}
+```
+
+这形成：
+
+```
+原文件：OSS
+当前简历：Resume
+历史依据：InterviewResult.resumeProfileSnapshot
+```
+
+历史报告读取快照，不重新读取用户当前简历。
+
+---
+
+## 十九、面试时可以这样总结
+
+你可以这样向面试官讲：
+
+> 我们没有让后端接收任意简历 URL，也没有把永久 OSS 密钥暴露给前端。用户选择文件后，前端先通过 JWT 获取当前用户目录下的临时 STS 凭证，再直传 OSS。上传成功后，前端只提交 objectKey、文件名、MIME 和大小，后端会根据当前用户身份校验对象路径，并通过 HeadObject 校验 OSS 中文件的真实元数据。之后后端创建 Resume 记录并投递异步解析任务，Worker 从 OSS 读取文件，提取文本、清理 PII，再调用模型转换成标准化简历对象，经过 Zod 校验后持久化。押题和模拟面试统一使用这份结构化简历，面试结果还会保存快照，保证历史报告可以复现。
+
+其中最值得强调的不是“用了 STS”，而是：
+
+```
+临时授权
++ 用户目录隔离
++ ObjectKey 校验
++ OSS 元数据复核
++ 异步解析
++ 标准化结构
++ 历史快照
++ PII 保护
+```
+
+这条链路体现的是完整的全栈工程设计，而不仅是简单的文件上传。
