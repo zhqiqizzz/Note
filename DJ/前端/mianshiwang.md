@@ -37,6 +37,23 @@
   "reasonCode": "insufficient_depth"
 }
 ```
+
+*服务端策略校验逐条拆解*
+模型决策通过 Zod 后，进入：
+
+```
+enforceAgentPolicy(
+  state,
+  decision,
+  elapsedMinutes,
+  targetDuration,
+);
+```
+规则一：达到总时长，强制结束
+规则二：达到题数上限，强制结束
+规则三：接近时间上限，不再追问
+规则四：追问次数越界
+
 ### 你现在应该能说出的三分钟版本
 
 > 用户提交回答时，前端会为当前回合生成 `turnId` 并保存在 Pinia 中，网络失败重试时复用同一个 ID。请求经过 JWT Guard 后，Controller 建立 SSE 连接，并通过 RxJS Subject 把 Service 产生的阶段事件转成 SSE 数据。
