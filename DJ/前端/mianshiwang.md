@@ -312,8 +312,6 @@ Service 继续运行
 3380ms res.end
 ```
 
-把这条
-
 > `waiting` 不只是 UI 文案，它是当前回合提交成功的业务确认。
 ### 面试时的完整回答模板
 
@@ -341,3 +339,11 @@ Service 继续运行
 > Agent 的评估、决策和下一题生成属于后续阶段，即使模型超时或 SSE 断开，用户回答也不会丢失。生成下一题时，我会先创建带 `turnId` 的问题占位项，生成成功后再更新问题和参考答案，最后保存 `lastCompletedTurnId` 检查点。
 > 
 > 因此同一回合重试时，系统能够判断回答是否已经保存、问题占位是否已经创建、回合是否已经完成，从而避免重复保存回答或生成两道题。面试结束后只更新为 `queued` 并投递 BullMQ，报告 Worker 独立完成后续状态流转。
+
+### 面试时的回答模板
+
+> 我们的模拟面试使用 POST SSE，因为回答请求需要携带 JWT、自定义请求体和 `turnId`，不适合直接使用原生 EventSource。Controller 设置 `text/event-stream` 响应头，并订阅 Service 返回的 RxJS Subject，将 Agent 评估、策略决策、问题生成、参考答案和等待状态编码为结构化事件。
+> 
+> 前端不是简单拼接字符串，而是用事件类型驱动状态机。`waiting` 表示当前回合已经完整持久化，收到它之后才清除前端保存的 `pendingTurn`。如果连接中断，前端保留原来的 `turnId` 和回答，后端通过 AbortController 中止模型流，并将 Agent 状态保存为 `retryable`。
+> 
+> SSE 本身不负责可靠恢复，因为已经发送的 token 不等于已经保存的业务结果。恢复时始终以 MongoDB 中的 `lastCompletedTurnId`、`agentState` 和 `qaList` 为准。报告生成生命周期更长，因此使用 BullMQ 和持久化状态轮询，而不是维持一条长 SSE。
