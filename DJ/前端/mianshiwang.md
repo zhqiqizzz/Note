@@ -245,6 +245,47 @@ if (signal?.aborted) {
 - 模型 SDK 支持 AbortSignal 时，底层网络请求直接停止；
 - SDK 没有及时响应时，业务循环仍可以主动退出。
 
+### `unsubscribe` 和 `abort` 的区别
+
+断开连接时：
+
+```
+subscription.unsubscribe();
+abortController.abort();
+```
+
+二者作用不同。
+
+## `unsubscribe()`
+
+停止 Controller 接收 Subject 事件：
+
+```
+Service 继续运行
+但 Controller 不再接收 next
+```
+
+它不一定会自动停止模型调用。
+
+## `abort()`
+
+向模型调用传递取消信号：
+
+```
+停止 HTTP 请求
+停止 token 流
+触发异常恢复
+```
+
+因此只做 `unsubscribe()` 会出现：
+
+```
+浏览器已经离开
+模型仍然继续消耗 Token
+后端仍然继续执行
+```
+
+只做 `abort()` 也不够，因为 RxJS 订阅和 Response 资源仍要清理。
 
 > `waiting` 不只是 UI 文案，它是当前回合提交成功的业务确认。
 ### 面试时的完整回答模板
