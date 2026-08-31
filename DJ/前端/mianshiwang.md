@@ -11,6 +11,32 @@
 |生成完成|写入问题和参考答案|`idle`|`waiting`|
 |回合完成|保存 lastCompletedTurnId|清除 processingTurnId|清除 pendingTurn|
 |失败|回答仍保留|`retryable`|允许重试|
+系统先*评估*
+```
+{
+  "dimension": "SSE",
+  "score": 58,
+  "strengths": [
+    "能够说明 SSE 用于实时推送"
+  ],
+  "gaps": [
+    "没有解释事件协议",
+    "没有说明断线恢复",
+    "没有说明代理服务器缓冲问题"
+  ],
+  "needsFollowUp": true
+}
+```
+
+然后再根据评估结果和面试状态*决策*
+```
+{
+  "action": "follow_up",
+  "dimension": "SSE",
+  "difficulty": "medium",
+  "reasonCode": "insufficient_depth"
+}
+```
 ### 你现在应该能说出的三分钟版本
 
 > 用户提交回答时，前端会为当前回合生成 `turnId` 并保存在 Pinia 中，网络失败重试时复用同一个 ID。请求经过 JWT Guard 后，Controller 建立 SSE 连接，并通过 RxJS Subject 把 Service 产生的阶段事件转成 SSE 数据。
