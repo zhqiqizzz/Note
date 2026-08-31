@@ -193,7 +193,7 @@ this.pendingTurn = null;
 
 如果在问题还没保存完成前就清除 `pendingTurn`，网络失败后前端可能生成新的 `turnId`，导致重复推进。
 
-因此：
+
 
 > `waiting` 不只是 UI 文案，它是当前回合提交成功的业务确认。
 ### 面试时的完整回答模板
