@@ -1708,3 +1708,453 @@ const params = {
 ```
 
 来决定是否展示重试操作。
+
+
+# 一、性能优化的正确思路
+
+不要一上来就说：
+
+```
+使用懒加载
+使用虚拟列表
+使用防抖节流
+```
+
+更好的回答方式是：
+
+```
+先发现问题
+  ↓
+定位瓶颈
+  ↓
+分析原因
+  ↓
+针对性优化
+  ↓
+验证优化结果
+```
+
+面试官更关注你是否会定位问题，而不是是否背过优化手段。
+
+## 1. 页面性能问题通常来自哪里
+
+前端性能问题大致分为四类：
+
+```
+网络问题
+JavaScript 执行问题
+渲染与布局问题
+内存和资源管理问题
+```
+
+### 网络问题
+
+例如：
+
+- JS 包太大。
+- 请求太多。
+- 接口响应慢。
+- 图片太大。
+- CDN 缓存失效。
+- 首屏加载了不必要的资源。
+
+### JavaScript 执行问题
+
+例如：
+
+- 大量数据排序、过滤。
+- 频繁 JSON 解析。
+- 高频 WebSocket 消息处理。
+- 大量响应式对象触发更新。
+- 复杂计算阻塞主线程。
+
+### 渲染问题
+
+例如：
+
+- 一次性渲染几万行表格。
+- DOM 层级过深。
+- 频繁触发重排。
+- 图表频繁刷新。
+- 页面中同时存在大量复杂组件。
+
+### 内存问题
+
+例如：
+
+- 定时器没有清理。
+- WebSocket 没有关闭。
+- 事件监听重复注册。
+- ECharts 实例没有 `dispose`。
+- 地图覆盖物不断累积。
+- 闭包持有大量数据。
+
+# 二、如何定位性能问题
+
+## 1. Network 面板
+
+Network 主要看网络层：
+
+- 哪些请求最慢。
+- 哪些请求阻塞首屏。
+- 请求数量是否过多。
+- JS、CSS、图片体积。
+- 是否命中缓存。
+- 是否存在 404。
+- 是否存在重复请求。
+- 接口的等待时间和下载时间。
+
+例如发现页面请求了 80 个几 KB 的接口，问题不一定是单个接口慢，而是：
+
+```
+请求数量太多
+  ↓
+连接调度和排队时间增加
+  ↓
+页面等待时间变长
+```
+
+对应优化可能是：
+
+- 聚合接口。
+- 并行请求。
+- 非关键请求延迟加载。
+- 缓存稳定数据。
+- 页面进入后再加载低优先级数据。
+
+## 2. Performance 面板
+
+Performance 可以录制页面一段时间，观察：
+
+- Long Task。
+- JavaScript 执行时间。
+- Layout。
+- Paint。
+- Composite。
+- FPS。
+- 事件处理耗时。
+- 页面是否出现主线程阻塞。
+
+如果录制后看到大量黄色区域，通常说明 JavaScript 执行较重。
+
+如果 Layout 很多，可能是频繁触发重排。
+
+如果 Paint 很多，可能是：
+
+- 大面积样式更新。
+- 阴影、滤镜过多。
+- 大量 DOM 变化。
+- Canvas 或图表绘制频繁。
+
+## 3. Vue Devtools
+
+Vue Devtools 可以观察：
+
+- 哪些组件发生更新。
+- 哪些组件更新频繁。
+- Store 数据变化。
+- 组件层级。
+- 是否有不必要的父组件刷新。
+
+例如设备状态每秒更新一次，却导致整个页面所有组件重新渲染，说明响应式依赖设计不合理。
+
+## 4. Lighthouse
+
+Lighthouse 适合评估：
+
+- 首屏速度。
+- 可访问性。
+- SEO。
+- 最佳实践。
+- 资源加载。
+
+它更适合页面整体评估，不适合替代 Performance 做复杂交互卡顿分析。
+
+# 三、首屏性能优化
+
+首屏优化的目标是：
+
+```
+尽快展示可用内容
+尽快允许用户进行主要操作
+```
+
+## 1. 路由懒加载
+
+```
+const Dashboard = () => import('@/views/Dashboard.vue')
+const DeviceDetail = () => import('@/views/DeviceDetail.vue')
+```
+
+用户进入首页时，不要把设备详情、地图编辑器、报表页面全部加载进来。
+
+## 2. 组件异步加载
+
+```
+import { defineAsyncComponent } from 'vue'
+
+const DeviceMap = defineAsyncComponent(
+  () => import('@/components/DeviceMap.vue')
+)
+```
+
+适合：
+
+- 地图。
+- ECharts。
+- 富文本编辑器。
+- 大型弹窗。
+- 低频详情模块。
+
+## 3. 图片优化
+
+可以使用：
+
+- WebP 或 AVIF。
+- 响应式图片。
+- 图片懒加载。
+- 缩略图。
+- CDN 图片处理。
+- 合理设置尺寸。
+
+```
+<img
+  src="/images/device-small.webp"
+  loading="lazy"
+  alt="device"
+/>
+```
+
+但首屏关键图片不应该全部懒加载，否则可能造成首屏内容出现更晚。
+
+## 4. 延迟加载非核心功能
+
+例如设备页面首屏只需要：
+
+```
+设备名称
+在线状态
+电量
+主要地图区域
+```
+
+这些内容可以先加载。
+
+以下内容可以延后：
+
+```
+历史飞行记录
+统计图表
+操作日志
+高级配置
+设备文档
+```
+
+可以使用：
+
+```
+requestIdleCallback(() => {
+  loadHistory()
+})
+```
+
+不过需要注意浏览器兼容性，可以提供降级：
+
+```
+const runWhenIdle =
+  window.requestIdleCallback ?? ((callback: IdleRequestCallback) => {
+    return window.setTimeout(callback, 1)
+  })
+```
+
+# 四、实时数据性能优化
+
+这是该岗位非常重要的内容。
+
+假设 WebSocket 每秒推送 100 条设备状态：
+
+```
+每条消息
+  ↓
+修改响应式数据
+  ↓
+触发组件更新
+  ↓
+更新图表
+```
+
+这样容易造成页面卡顿。
+
+## 1. 不要每条消息都刷新 UI
+
+错误模式：
+
+```
+socket.onmessage = event => {
+  device.value = JSON.parse(event.data)
+  chart.setOption(...)
+}
+```
+
+更合理的方式是：
+
+```
+消息到达
+  ↓
+先写入普通缓存
+  ↓
+下一帧统一处理
+  ↓
+批量更新响应式状态
+  ↓
+节流更新图表
+```
+
+示例：
+
+```
+const pending = new Map<string, DeviceStatus>()
+let frameId: number | null = null
+
+function receiveStatus(status: DeviceStatus) {
+  pending.set(status.deviceId, status)
+
+  if (frameId !== null) return
+
+  frameId = requestAnimationFrame(() => {
+    for (const status of pending.values()) {
+      updateDeviceStatus(status)
+    }
+
+    pending.clear()
+    frameId = null
+  })
+}
+```
+
+这样一帧最多更新一次，而不是每条消息触发一次页面刷新。
+
+## 2. 大对象不要全部深度响应式
+
+如果设备原始遥测数据非常大，但页面只展示少数字段，不建议整个对象深度响应式追踪。
+
+可以使用：
+
+```
+const rawTelemetry = shallowRef<Telemetry | null>(null)
+```
+
+或者：
+
+```
+const rawData = markRaw(largeData)
+```
+
+原则：
+
+- 页面需要响应式更新的字段，才放入响应式数据。
+- 原始大数据、第三方实例、地图对象可以使用 `shallowRef` 或 `markRaw`。
+- 不要把 ECharts 实例、WebSocket 实例做成深度响应式对象。
+
+## 3. 图表要节流更新
+
+```
+let lastUpdate = 0
+
+function updateChart(data: Point[]) {
+  const now = performance.now()
+
+  if (now - lastUpdate < 200) return
+
+  lastUpdate = now
+
+  chart?.setOption({
+    series: [{ data }]
+  })
+}
+```
+
+设备状态可以高频接收，但图表不一定需要每条数据都绘制。用户通常感知不到 100ms 和 300ms 的图表更新差异，但浏览器能明显感受到计算量差异。
+
+# 五、内存泄漏与资源清理
+
+Vue 页面中常见的资源包括：
+
+```
+setInterval
+setTimeout
+addEventListener
+WebSocket
+EventSource
+AbortController
+ECharts
+地图实例
+requestAnimationFrame
+```
+
+组件卸载时要清理：
+
+```
+let timer: number | undefined
+let socket: WebSocket | null = null
+let frameId: number | null = null
+
+onUnmounted(() => {
+  if (timer) {
+    clearInterval(timer)
+  }
+
+  socket?.close()
+
+  if (frameId !== null) {
+    cancelAnimationFrame(frameId)
+  }
+
+  chart?.dispose()
+})
+```
+
+事件监听也必须成对出现：
+
+```
+function handleResize() {
+  chart?.resize()
+}
+
+onMounted(() => {
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+})
+```
+
+高频追问：
+
+> 为什么页面切换几次后越来越卡？
+
+可能原因：
+
+- 每次进入页面都创建一个 WebSocket。
+- 旧 WebSocket 没关闭。
+- 每次挂载都注册一次事件监听。
+- 定时器不断叠加。
+- ECharts 实例没有销毁。
+- 订阅回调没有取消。
+
+回答时可以说：
+
+> 我会检查组件生命周期内是否重复创建连接、监听器、定时器和第三方实例，并在 `onUnmounted` 中统一清理；对于需要缓存的页面，则要区分 `onUnmounted` 和 `onDeactivated` 的行为。
+
+# 六、面试回答模板
+
+面试官问：
+
+> 你是如何进行前端性能优化的？
+
+可以回答：
+
+> 我会先通过 Network、Performance、Vue Devtools 和 Lighthouse 定位问题，而不是直接套优化方案。网络层主要检查请求数量、资源体积、接口耗时和缓存；运行时重点检查长任务、频繁响应式更新、布局抖动和图表绘制；内存方面检查定时器、WebSocket、事件监听和第三方实例是否在组件销毁时清理。
+> 
+> 对首屏，我会采用路由懒加载、异步组件、图片优化和非关键请求延迟加载；对大列表使用虚拟列表；对设备实时数据先在缓存中聚合，再通过 `requestAnimationFrame` 批量更新 UI，图表使用节流；对大对象使用 `shallowRef` 或 `markRaw` 减少不必要的深度响应式开销。优化后再通过性能指标和实际录制结果验证效果。
